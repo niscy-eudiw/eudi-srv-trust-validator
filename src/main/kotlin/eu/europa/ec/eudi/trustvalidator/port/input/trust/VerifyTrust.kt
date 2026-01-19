@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package eu.europa.ec.eudi.trustvalidator.port.input
+package eu.europa.ec.eudi.trustvalidator.port.input.trust
 
 import arrow.core.Either
 import arrow.core.NonEmptyList
@@ -31,10 +31,7 @@ fun interface VerifyTrust {
 }
 
 sealed interface VerifyTrustError {
-    object UnknownServiceType : VerifyTrustError {
-        val error = "Unknown service type"
-        val description = "Service type provided does not exist"
-    }
+    data object UnknownServiceType : VerifyTrustError
 }
 
 internal class VerifyTrustLive(
