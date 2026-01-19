@@ -24,6 +24,7 @@ import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
 import eu.europa.ec.eudi.trustvalidator.adapter.out.cert.TrustSources
 import eu.europa.ec.eudi.trustvalidator.adapter.out.lotl.FetchLOTLCertificatesDSS
 import eu.europa.ec.eudi.trustvalidator.domain.*
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrust
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrustLive
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -68,9 +69,10 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
 
     // VerifyTrust service
     registerBean<VerifyTrust> { VerifyTrustLive(bean()) }
+    registerBean { IsChainTrusted { emptySet() } }
 
     registerBean {
-        val utilityApi = TrustApi(bean())
+        val utilityApi = TrustApi(bean(), bean())
         val swaggerUi = SwaggerUi(
             publicResourcesBasePath = env.getRequiredProperty("spring.webflux.static-path-pattern").removeSuffix("/**"),
             webJarResourcesBasePath = env.getRequiredProperty("spring.webflux.webjars-path-pattern")

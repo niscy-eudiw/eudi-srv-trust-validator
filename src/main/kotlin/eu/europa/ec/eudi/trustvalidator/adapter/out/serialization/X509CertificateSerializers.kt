@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package eu.europa.ec.eudi.trustvalidator.adapter.out.x5c
+package eu.europa.ec.eudi.trustvalidator.adapter.out.serialization
 
 import arrow.core.NonEmptyList
 import arrow.core.serialization.NonEmptyListSerializer
