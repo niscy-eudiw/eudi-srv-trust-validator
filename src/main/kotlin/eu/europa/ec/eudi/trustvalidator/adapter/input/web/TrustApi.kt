@@ -23,7 +23,6 @@ import eu.europa.ec.eudi.trustvalidator.port.input.VerifyTrust
 import kotlinx.serialization.Serializable
 import org.springframework.http.MediaType.APPLICATION_JSON
 import org.springframework.web.reactive.function.server.*
-import org.springframework.web.reactive.function.server.RequestPredicates.version
 import org.springframework.web.reactive.function.server.ServerResponse.badRequest
 import org.springframework.web.reactive.function.server.ServerResponse.ok
 import java.security.cert.X509Certificate
@@ -34,7 +33,7 @@ internal class TrustApi(
     val route: RouterFunction<ServerResponse> = coRouter {
         POST(
             TRUST_QUERY,
-            contentType(APPLICATION_JSON) and accept(APPLICATION_JSON) and version("1.0.0"),
+            contentType(APPLICATION_JSON) and accept(APPLICATION_JSON),
             ::trustQuery,
         )
     }

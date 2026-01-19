@@ -40,8 +40,6 @@ import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
-import org.springframework.web.reactive.config.ApiVersionConfigurer
-import org.springframework.web.reactive.config.WebFluxConfigurer
 import java.net.URI
 import java.security.KeyStore
 
@@ -120,17 +118,6 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
                 }
             }
             csrf { disable() } // cross-site request forgery disabled
-        }
-    }
-    registerBean {
-        object : WebFluxConfigurer {
-            override fun configureApiVersioning(configurer: ApiVersionConfigurer) {
-                configurer.apply {
-                    useRequestHeader("API-Version")
-                    setVersionRequired(false)
-                    setDefaultVersion("1.0.0")
-                }
-            }
         }
     }
 }
