@@ -17,9 +17,12 @@ package eu.europa.ec.eudi.trustvalidator.adapter.input.web
 
 import arrow.core.Either
 import arrow.core.NonEmptyList
+import arrow.core.getOrElse
+import arrow.core.raise.either
 import eu.europa.ec.eudi.trustvalidator.adapter.out.x5c.X509CertificateChainSerializer
 import eu.europa.ec.eudi.trustvalidator.domain.ProviderType
-import eu.europa.ec.eudi.trustvalidator.port.input.VerifyTrust
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrust
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrustError
 import kotlinx.serialization.Serializable
 import org.springframework.http.MediaType.APPLICATION_JSON
 import org.springframework.web.reactive.function.server.*
@@ -39,45 +42,51 @@ internal class TrustApi(
     }
 
     private suspend fun trustQuery(request: ServerRequest): ServerResponse {
-        val body = Either
-            .catch { request.awaitBody<TrustQueryRequest>() }
-            .fold(
-                ifLeft = { e ->
-                    return badRequest().json().bodyValueAndAwait(ErrorResponse("Invalid request body: ${e.message}"))
-                },
-                ifRight = { it },
-            )
-
-        val serviceType = body.serviceType.toDomain()
-
-        return verifyTrust(serviceType, body.x5c).fold(
-            ifLeft = { error ->
-                badRequest().json().bodyValueAndAwait(error)
-            },
-            ifRight = { trusted ->
-                ok().contentType(APPLICATION_JSON).bodyValueAndAwait(TrustQueryResponse(trusted))
-            },
+        @Serializable
+        data class TrustQueryRequest(
+            @Serializable(with = X509CertificateChainSerializer::class)
+            val x5c: NonEmptyList<X509Certificate>,
+            val serviceType: ProviderType,
         )
+
+        @Serializable
+        data class TrustQueryResponse(
+            val trusted: Boolean,
+        )
+
+        @Serializable
+        data class ErrorResponse(
+            val error: String,
+            val description: String,
+        )
+
+        return either {
+            val body = Either.catch { request.awaitBody<TrustQueryRequest>() }
+                .mapLeft {
+                    ErrorResponse(
+                        error = "Invalid request body",
+                        description = it.message ?: "Unparsable request body",
+                    )
+                }
+                .bind()
+            val serviceType = body.serviceType.toDomain()
+            val trusted = verifyTrust(serviceType, body.x5c)
+                .mapLeft {
+                    when (it) {
+                        VerifyTrustError.UnknownServiceType ->
+                            ErrorResponse(
+                                error = "Unknown service type",
+                                description = "Service type provided does not exist",
+                            )
+                    }
+                }
+                .bind()
+            TrustQueryResponse(trusted)
+        }.map { ok().json().bodyValueAndAwait(it) }
+            .getOrElse { badRequest().json().bodyValueAndAwait(it) }
     }
 
     companion object {
         const val TRUST_QUERY = "/trust"
     }
 }
-
-@Serializable
-internal data class TrustQueryRequest(
-    @Serializable(with = X509CertificateChainSerializer::class)
-    val x5c: NonEmptyList<X509Certificate>,
-    val serviceType: ProviderType,
-)
-
-@Serializable
-internal data class TrustQueryResponse(
-    val trusted: Boolean,
-)
-
-@Serializable
-internal data class ErrorResponse(
-    val error: String,
-)

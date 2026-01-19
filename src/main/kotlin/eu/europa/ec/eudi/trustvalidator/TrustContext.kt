@@ -24,8 +24,8 @@ import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
 import eu.europa.ec.eudi.trustvalidator.adapter.out.cert.TrustSources
 import eu.europa.ec.eudi.trustvalidator.adapter.out.lotl.FetchLOTLCertificatesDSS
 import eu.europa.ec.eudi.trustvalidator.domain.*
-import eu.europa.ec.eudi.trustvalidator.port.input.VerifyTrust
-import eu.europa.ec.eudi.trustvalidator.port.input.VerifyTrustLive
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrust
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrustLive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
