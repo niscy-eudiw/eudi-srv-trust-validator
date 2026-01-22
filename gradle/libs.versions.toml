@@ -17,6 +17,7 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
 arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
 arrow-core-serialization = { module = "io.arrow-kt:arrow-core-serialization", version.ref = "arrow" }
+arrow-autoclose = { module = "io.arrow-kt:arrow-autoclose", version.ref = "arrow" }
 swagger-ui = { module = "org.webjars:swagger-ui", version.ref = "swaggerUi" }
 uri = { module = "com.eygraber:uri-kmp", version.ref = "uri" }
 dss-service = { module = "eu.europa.ec.joinup.sd-dss:dss-service", version.ref = "dss" }
