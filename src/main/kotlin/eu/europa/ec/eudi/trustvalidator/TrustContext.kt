@@ -15,18 +15,17 @@
  */
 package eu.europa.ec.eudi.trustvalidator
 
-import arrow.core.Either
 import arrow.core.NonEmptyList
 import arrow.core.toNonEmptyListOrNull
-import eu.europa.ec.eudi.trustvalidator.adapter.input.timer.RefreshTrustSources
+import com.eygraber.uri.Url
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.SwaggerUi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
-import eu.europa.ec.eudi.trustvalidator.adapter.out.cert.TrustSources
-import eu.europa.ec.eudi.trustvalidator.adapter.out.lotl.FetchLOTLCertificatesDSS
+import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.KeyStoreManager
+import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.ListOfTrustedListsManager
+import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.TrustSourceManager
+import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.plus
 import eu.europa.ec.eudi.trustvalidator.domain.*
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted
-import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrust
-import eu.europa.ec.eudi.trustvalidator.port.input.trust.VerifyTrustLive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
@@ -41,8 +40,6 @@ import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
-import java.net.URI
-import java.security.KeyStore
 
 private val log = LoggerFactory.getLogger(TrustApplication::class.java)
 
@@ -50,36 +47,33 @@ private val log = LoggerFactory.getLogger(TrustApplication::class.java)
 internal fun beans(clock: Clock) = BeanRegistrarDsl {
     registerBean { clock }
 
-    registerBean { FetchLOTLCertificatesDSS() }
+    registerBean {
+        val trustSources = env.getTrustSources()
+        val keyStores = trustSources.filterIsInstance<TrustSource.KeyStore>().toNonEmptyListOrNull()
+        val listsOfTrustedLists = trustSources.filterIsInstance<TrustSource.ListOfTrustedLists>().toNonEmptyListOrNull()
 
-    // Trust sources storage (mutable, updated by scheduler)
-    registerBean { TrustSources() }
+        val keyStoreManager = keyStores?.let { KeyStoreManager(it) }
+        val listOfTrustedListsManager = listsOfTrustedLists?.let { ListOfTrustedListsManager(it, bean()) }
 
-    // Periodic refresh of trust sources (LOTL and keystore)
-    registerBean { RefreshTrustSources(bean(), bean(), bean()) }
+        val manager = listOfNotNull(listOfTrustedListsManager, keyStoreManager).reduceOrNull(TrustSourceManager::plus)
+        checkNotNull(manager) { "No TrustSources configured" }
+    }
 
-    //
-    // Config
-    //
-    registerBean { verifierConfig(env, bean()) }
+    // VerifyTrust service
+    registerBean { IsChainTrusted(bean()) }
 
     //
     // End points
     //
-
-    // VerifyTrust service
-    registerBean<VerifyTrust> { VerifyTrustLive(bean()) }
-    registerBean { IsChainTrusted { emptySet() } }
-
     registerBean {
-        val utilityApi = TrustApi(bean(), bean())
+        val trustApi = TrustApi(bean())
         val swaggerUi = SwaggerUi(
-            publicResourcesBasePath = env.getRequiredProperty("spring.webflux.static-path-pattern").removeSuffix("/**"),
-            webJarResourcesBasePath = env.getRequiredProperty("spring.webflux.webjars-path-pattern")
-                .removeSuffix("/**"),
+            publicResourcesBasePath =
+                env.getRequiredProperty("spring.webflux.static-path-pattern").removeSuffix("/**"),
+            webJarResourcesBasePath =
+                env.getRequiredProperty("spring.webflux.webjars-path-pattern").removeSuffix("/**"),
         )
-        utilityApi.route
-            .and(swaggerUi.route)
+        trustApi.route.and(swaggerUi.route)
     }
 
     //
@@ -97,6 +91,7 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
             it.defaultCodecs().enableLoggingRequestDetails(true)
         }
     }
+
     registerBean {
         val http = bean<ServerHttpSecurity>()
         http {
@@ -124,73 +119,71 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
     }
 }
 
-private fun verifierConfig(environment: Environment, clock: Clock): ValidatorConfig {
-    return ValidatorConfig(
-        trustSourcesConfig = environment.trustSources(),
-    )
+private enum class TrustSourceType {
+    KeyStore,
+    LOTL,
+    LOTE,
 }
 
-/**
- * Parses the trust sources configuration from the environment.
- * Handles array-like property names: trustSources[0].pattern, etc.
- */
-private fun Environment.trustSources(): Map<ServiceType, TrustSourceConfig> {
-    val trustSourcesConfigMap = mutableMapOf<ServiceType, TrustSourceConfig>()
-    val prefix = "trustSources"
-
+private fun Environment.getTrustSources(): List<TrustSource> = buildList {
     var index = 0
+
     while (true) {
-        val indexPrefix = "$prefix[$index]"
-        val providerType = getPropertyOrEnvVariable("$indexPrefix.providerType") ?: break
+        val prefix = "trustSources[$index]"
 
-        // Parse LOTL configuration if present
-        val lotlSourceConfig = getPropertyOrEnvVariable("$indexPrefix.lotl.location")?.takeIf { it.isNotBlank() }?.let { lotlLocation ->
-            val location = URI(lotlLocation).toURL()
-            val serviceTypeFilter = getPropertyOrEnvVariable<ServiceType>("$indexPrefix.lotl.serviceTypeFilter")
-            val refreshInterval = getPropertyOrEnvVariable("$indexPrefix.lotl.refreshInterval", "0 0 * * * *")
-
-            val lotlKeystoreConfig = parseKeyStoreConfig("$indexPrefix.lotl.keystore")
-
-            TrustedListConfig(location, serviceTypeFilter, refreshInterval, lotlKeystoreConfig)
-        }
-
-        // Parse keystore configuration if present
-        val keystoreConfig = parseKeyStoreConfig("$indexPrefix.keystore")
-
-        val serviceType = parseServiceType(providerType)
-        if (serviceType == null) {
-            log.warn("Unknown providerType '{}' at {} — skipping entry", providerType, indexPrefix)
-        } else {
-            trustSourcesConfigMap[serviceType] = trustSourcesConfig(lotlSourceConfig, keystoreConfig)
+        val trustSourceType = getPropertyOrEnvVariable<TrustSourceType>("$prefix.type")
+        when (trustSourceType) {
+            null -> break
+            TrustSourceType.KeyStore -> add(getKeyStoreTrustSource(prefix))
+            TrustSourceType.LOTL -> add(getListOfTrustedListsTrustSource(prefix))
+            TrustSourceType.LOTE -> add(getListOfTrustedEntitiesTrustSource(prefix))
         }
 
         index++
     }
-
-    return trustSourcesConfigMap
 }
 
-private fun parseServiceType(value: String): ServiceType? {
-    // Try by enum name first
-    return try {
-        ServiceType.valueOf(value)
-    } catch (_: IllegalArgumentException) {
-        // Then try to match by the URL value stored in the enum
-        ServiceType.values().firstOrNull { it.value == value }
+private fun Environment.getKeyStoreTrustSource(prefix: String): TrustSource.KeyStore {
+    val entity = getRequiredPropertyOrEnvVariable<Entity>("$prefix.entity")
+    val service = getRequiredPropertyOrEnvVariable<Service>("$prefix.service")
+    val properties = checkNotNull(getKeyStoreProperties(prefix)) { "Missing KeyStore configuration for $prefix" }
+    return TrustSource.KeyStore(entity, service, properties)
+}
+
+private fun Environment.getKeyStoreProperties(prefix: String): KeyStoreProperties? =
+    getPropertyOrEnvVariable("$prefix.location")?.let {
+        val location = DefaultResourceLoader().getResource(it)
+        val type = getPropertyOrEnvVariable("$prefix.storeType", "JKS")
+        val password = getPropertyOrEnvVariable("$prefix.password")?.takeIf { password -> password.isNotBlank() }
+        KeyStoreProperties(location, type, password)
     }
+
+private fun Environment.getListOfTrustedListsTrustSource(prefix: String): TrustSource.ListOfTrustedLists {
+    val location = Url.parse(getRequiredPropertyOrEnvVariable("$prefix.location"))
+    val signatureVerification = getKeyStoreProperties("$prefix.keyStore")
+    return TrustSource.ListOfTrustedLists(location, signatureVerification)
 }
 
-private fun Environment.getPropertyOrEnvVariable(property: String): String? {
-    return getProperty(property) ?: getProperty(toEnvironmentVariable(property))
+private fun Environment.getListOfTrustedEntitiesTrustSource(prefix: String): TrustSource.ListOfTrustedEntities {
+    val entity = getRequiredPropertyOrEnvVariable<Entity>("$prefix.entity")
+    val location = Url.parse(getRequiredPropertyOrEnvVariable("$prefix.location"))
+    val signatureVerification = getKeyStoreProperties("$prefix.keyStore")
+    return TrustSource.ListOfTrustedEntities(entity, location, signatureVerification)
 }
 
-private fun Environment.getPropertyOrEnvVariable(property: String, defaultValue: String): String {
-    return getProperty(property) ?: getProperty(toEnvironmentVariable(property)) ?: defaultValue
-}
+private fun Environment.getPropertyOrEnvVariable(property: String): String? =
+    getProperty(property) ?: getProperty(toEnvironmentVariable(property))
 
-private inline fun <reified T> Environment.getPropertyOrEnvVariable(property: String): T? {
-    return this.getProperty(key = property) ?: this.getProperty(key = toEnvironmentVariable(property))
-}
+private fun Environment.getPropertyOrEnvVariable(property: String, defaultValue: String): String =
+    getProperty(property) ?: getProperty(toEnvironmentVariable(property)) ?: defaultValue
+
+private inline fun <reified T> Environment.getPropertyOrEnvVariable(property: String): T? =
+    getProperty(key = property) ?: getProperty(key = toEnvironmentVariable(property))
+
+private inline fun <reified T> Environment.getRequiredPropertyOrEnvVariable(property: String): T =
+    getProperty(key = property)
+        ?: getProperty(key = toEnvironmentVariable(property))
+        ?: throw IllegalArgumentException("Missing required property '$property'")
 
 private fun toEnvironmentVariable(property: String): String {
     return property.replace(".", "_")
@@ -198,27 +191,6 @@ private fun toEnvironmentVariable(property: String): String {
         .replace("]", "")
         .replace("-", "")
         .uppercase()
-}
-
-private fun Environment.parseKeyStoreConfig(propertyPrefix: String): KeyStoreConfig? = getPropertyOrEnvVariable(
-    "$propertyPrefix.path",
-)?.let { keystorePath ->
-    val keystoreType = getPropertyOrEnvVariable("$propertyPrefix.type") ?: "JKS"
-    val keystorePassword = getPropertyOrEnvVariable("$propertyPrefix.password", "").toCharArray()
-    loadKeystore(keystorePath, keystoreType, keystorePassword)
-        .onLeft { log.warn("Failed to load keystore from '$keystorePath'", it) }
-        .map { KeyStoreConfig(keystorePath, keystoreType, keystorePassword, it) }
-        .getOrNull()
-}
-
-private fun loadKeystore(keystorePath: String, keystoreType: String, keystorePassword: CharArray) = Either.catch {
-    DefaultResourceLoader().getResource(keystorePath)
-        .inputStream
-        .use {
-            KeyStore.getInstance(keystoreType).apply {
-                load(it, keystorePassword)
-            }
-        }
 }
 
 /**

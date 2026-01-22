@@ -38,6 +38,7 @@ dependencies {
     implementation(libs.arrow.core)
     implementation(libs.arrow.fx.coroutines)
     implementation(libs.arrow.core.serialization)
+    implementation(libs.arrow.autoclose)
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
     implementation("org.webjars:webjars-locator-lite")
     implementation(libs.swagger.ui)
