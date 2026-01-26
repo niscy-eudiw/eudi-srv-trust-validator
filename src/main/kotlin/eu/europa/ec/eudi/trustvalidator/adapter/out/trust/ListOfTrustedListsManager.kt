@@ -30,8 +30,8 @@ import eu.europa.esig.dss.tsl.job.TLValidationJob
 import eu.europa.esig.dss.tsl.source.LOTLSource
 import eu.europa.esig.dss.tsl.sync.ExpirationAndSignatureCheckStrategy
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.security.cert.TrustAnchor
@@ -45,29 +45,28 @@ class ListOfTrustedListsManager(
     private val clock: Clock,
 ) : TrustSourceManager {
     private val dispatcher = Dispatchers.IO.limitedParallelism(4, "ListOfTrustedListsManager")
-    private val mutex = Mutex()
-    private val data = mutableMapOf<TrustSource.ListOfTrustedLists, TrustedListsCertificateSource>()
+    private val data = MutableStateFlow(emptyMap<TrustSource.ListOfTrustedLists, TrustedListsCertificateSource>())
 
     override suspend fun getTrustAnchors(entity: Entity, service: Service): Set<TrustAnchor> {
         val serviceType = serviceTypeOf(entity, service)
 
         return if (null == serviceType) emptySet()
-        else mutex.withLock {
-            data.filter { (trustSource, _) -> entity == trustSource.entity }
-                .values
-                .flatMap { it.getTrustAnchors(serviceType, clock.now()) }.toSet()
-        }
+        else data.value
+            .filter { (trustSource, _) -> entity == trustSource.entity }
+            .values
+            .flatMap { it.getTrustAnchors(serviceType, clock.now()) }.toSet()
     }
 
     override suspend fun refresh() {
-        mutex.withLock {
-            listsOfTrustedLists.groupBy { it.location to it.signatureVerification }
-                .values
-                .parMap(dispatcher) { listsOfTrustedLists ->
-                    val lotlCertificates = refresh(listsOfTrustedLists.first())
-                    listsOfTrustedLists.forEach { data[it] = lotlCertificates }
-                }
-        }
+        listsOfTrustedLists.groupBy { it.location to it.signatureVerification }
+            .values
+            .parMap(dispatcher) { listsOfTrustedLists ->
+                val lotlCertificates = refresh(listsOfTrustedLists.first())
+                listsOfTrustedLists.map { it to lotlCertificates }
+            }
+            .flatten()
+            .toMap()
+            .let { updated -> data.update { updated } }
     }
 
     private suspend fun refresh(trustSource: TrustSource.ListOfTrustedLists): TrustedListsCertificateSource =
