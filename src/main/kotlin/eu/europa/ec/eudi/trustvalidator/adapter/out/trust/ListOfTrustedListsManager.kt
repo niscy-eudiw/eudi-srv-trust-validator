@@ -53,7 +53,9 @@ class ListOfTrustedListsManager(
 
         return if (null == serviceType) emptySet()
         else mutex.withLock {
-            data.values.flatMap { it.getTrustAnchors(serviceType, clock.now()) }.toSet()
+            data.filter { (trustSource, _) -> entity == trustSource.entity }
+                .values
+                .flatMap { it.getTrustAnchors(serviceType, clock.now()) }.toSet()
         }
     }
 

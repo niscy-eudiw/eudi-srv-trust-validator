@@ -55,6 +55,7 @@ sealed interface TrustSource {
     ) : TrustSource
 
     data class ListOfTrustedLists(
+        val entity: Entity,
         val location: Url,
         val signatureVerification: KeyStoreProperties?,
     ) : TrustSource
