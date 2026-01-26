@@ -132,7 +132,7 @@ data class TrustSourcesConfigurationProperties(
 
 data class TrustSourceConfigurationProperties(
     val type: TrustSourceType,
-    val entity: Entity? = null,
+    val entity: Entity,
     val service: Service? = null,
     val keyStore: KeyStoreConfigurationProperties? = null,
     val location: URL? = null,
@@ -159,20 +159,21 @@ private fun TrustSourceConfigurationProperties.toTrustSource(): TrustSource =
 
 private fun TrustSourceConfigurationProperties.toKeyStoreTrustSource(): TrustSource.KeyStore =
     TrustSource.KeyStore(
-        requireNotNull(entity) { "Missing entity" },
+        entity,
         requireNotNull(service) { "Missing service" },
         requireNotNull(keyStore) { "Missing keyStore" }.toKeyStoreProperties(),
     )
 
 private fun TrustSourceConfigurationProperties.toLOTLTrustSource(): TrustSource.ListOfTrustedLists =
     TrustSource.ListOfTrustedLists(
+        entity,
         requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
         keyStore?.toKeyStoreProperties(),
     )
 
 private fun TrustSourceConfigurationProperties.toLOTETrustSource(): TrustSource.ListOfTrustedEntities =
     TrustSource.ListOfTrustedEntities(
-        requireNotNull(entity) { "Missing entity" },
+        entity,
         requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
         keyStore?.toKeyStoreProperties(),
     )
