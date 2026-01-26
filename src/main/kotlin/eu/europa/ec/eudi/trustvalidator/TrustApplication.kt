@@ -21,9 +21,11 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
 import org.springframework.context.ApplicationContextInitializer
 import org.springframework.context.support.GenericApplicationContext
+import org.springframework.scheduling.annotation.EnableScheduling
 
 @SpringBootApplication
 @EnableConfigurationProperties(TrustSourcesConfigurationProperties::class)
+@EnableScheduling
 class TrustApplication
 
 fun main(args: Array<String>) {

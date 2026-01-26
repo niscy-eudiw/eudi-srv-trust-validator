@@ -18,6 +18,7 @@ package eu.europa.ec.eudi.trustvalidator
 import arrow.core.NonEmptyList
 import arrow.core.toNonEmptyListOrNull
 import com.eygraber.uri.Url
+import eu.europa.ec.eudi.trustvalidator.adapter.input.scheduling.RefreshTrustSources
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.SwaggerUi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
 import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.KeyStoreManager
@@ -62,6 +63,11 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
 
         val manager = listOfNotNull(listOfTrustedListsManager, keyStoreManager).reduceOrNull(TrustSourceManager::plus)
         checkNotNull(manager) { "No TrustSources configured" }
+    }
+
+    registerBean {
+        val trustSourcesProperties = bean<TrustSourcesConfigurationProperties>()
+        RefreshTrustSources(trustSourcesProperties.refreshInterval, bean())
     }
 
     // VerifyTrust service
@@ -128,6 +134,7 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
 @ConfigurationProperties
 data class TrustSourcesConfigurationProperties(
     val trustSources: List<TrustSourceConfigurationProperties>,
+    val refreshInterval: String,
 )
 
 data class TrustSourceConfigurationProperties(
