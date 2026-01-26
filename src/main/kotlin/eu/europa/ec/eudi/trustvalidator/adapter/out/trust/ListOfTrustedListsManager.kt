@@ -49,10 +49,10 @@ class ListOfTrustedListsManager(
     private val data = mutableMapOf<TrustSource.ListOfTrustedLists, TrustedListsCertificateSource>()
 
     override suspend fun getTrustAnchors(entity: Entity, service: Service): Set<TrustAnchor> {
-        val serviceType = entity.serviceType
-        if (null == serviceType || Service.Issuance != service) return emptySet()
+        val serviceType = serviceTypeOf(entity, service)
 
-        return mutex.withLock {
+        return if (null == serviceType) emptySet()
+        else mutex.withLock {
             data.values.flatMap { it.getTrustAnchors(serviceType, clock.now()) }.toSet()
         }
     }
@@ -128,8 +128,8 @@ class ListOfTrustedListsManager(
         }
 }
 
-private val Entity.serviceType: String?
-    get() = when (this) {
+private fun serviceTypeOf(entity: Entity, service: Service): String? =
+    when (entity) {
         Entity.WalletProvider -> "http://uri.etsi.org/TrstSvc/Svctype/Provider/Wallet"
         Entity.PIDProvider -> "http://uri.etsi.org/Svc/Svctype/Provider/PID"
         Entity.QEAAProvider -> "http://uri.etsi.org/TrstSvc/Svctype/EAA/Q"
