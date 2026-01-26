@@ -61,10 +61,12 @@ class ListOfTrustedListsManager(
 
     override suspend fun refresh() {
         mutex.withLock {
-            listsOfTrustedLists.parMap(dispatcher) { listOfTrustedLists ->
-                val lotlCertificates = refresh(listOfTrustedLists)
-                data[listOfTrustedLists] = lotlCertificates
-            }
+            listsOfTrustedLists.groupBy { it.location to it.signatureVerification }
+                .values
+                .parMap(dispatcher) { listsOfTrustedLists ->
+                    val lotlCertificates = refresh(listsOfTrustedLists.first())
+                    listsOfTrustedLists.forEach { data[it] = lotlCertificates }
+                }
         }
     }
 
