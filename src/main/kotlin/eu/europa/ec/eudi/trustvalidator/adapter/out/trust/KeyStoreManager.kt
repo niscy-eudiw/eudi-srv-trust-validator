@@ -46,10 +46,12 @@ class KeyStoreManager(
 
     override suspend fun refresh() {
         mutex.withLock {
-            keyStores.parMap(dispatcher) { keyStore ->
-                val keyStoreCertificates = refresh(keyStore)
-                data[keyStore] = keyStoreCertificates
-            }
+            keyStores.groupBy { it.properties }
+                .values
+                .parMap(dispatcher) { trustSources ->
+                    val keyStoreCertificates = refresh(trustSources.first())
+                    trustSources.forEach { data[it] = keyStoreCertificates }
+                }
         }
     }
 
