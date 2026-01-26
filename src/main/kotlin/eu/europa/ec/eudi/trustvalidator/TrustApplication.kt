@@ -23,7 +23,7 @@ import org.springframework.context.ApplicationContextInitializer
 import org.springframework.context.support.GenericApplicationContext
 
 @SpringBootApplication
-@EnableConfigurationProperties
+@EnableConfigurationProperties(TrustSourcesConfigurationProperties::class)
 class TrustApplication
 
 fun main(args: Array<String>) {

@@ -30,16 +30,18 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.BeanRegistrarDsl
+import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.http.codec.CodecCustomizer
 import org.springframework.core.env.Environment
 import org.springframework.core.env.getProperty
-import org.springframework.core.io.DefaultResourceLoader
+import org.springframework.core.io.Resource
 import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
+import java.net.URL
 
 private val log = LoggerFactory.getLogger(TrustApplication::class.java)
 
@@ -48,7 +50,10 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
     registerBean { clock }
 
     registerBean {
-        val trustSources = env.getTrustSources()
+        val trustSources = run {
+            val trustSourcesProperties = bean<TrustSourcesConfigurationProperties>()
+            trustSourcesProperties.trustSources.map { it.toTrustSource() }
+        }
         val keyStores = trustSources.filterIsInstance<TrustSource.KeyStore>().toNonEmptyListOrNull()
         val listsOfTrustedLists = trustSources.filterIsInstance<TrustSource.ListOfTrustedLists>().toNonEmptyListOrNull()
 
@@ -119,79 +124,61 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
     }
 }
 
-private enum class TrustSourceType {
+@Suppress("ConfigurationProperties")
+@ConfigurationProperties
+data class TrustSourcesConfigurationProperties(
+    val trustSources: List<TrustSourceConfigurationProperties>,
+)
+
+data class TrustSourceConfigurationProperties(
+    val type: TrustSourceType,
+    val entity: Entity? = null,
+    val service: Service? = null,
+    val keyStore: KeyStoreConfigurationProperties? = null,
+    val location: URL? = null,
+)
+
+enum class TrustSourceType {
     KeyStore,
     LOTL,
     LOTE,
 }
 
-private fun Environment.getTrustSources(): List<TrustSource> = buildList {
-    var index = 0
+data class KeyStoreConfigurationProperties(
+    val location: Resource,
+    val type: String = "JKS",
+    val password: String? = null,
+)
 
-    while (true) {
-        val prefix = "trustSources[$index]"
-
-        val trustSourceType = getPropertyOrEnvVariable<TrustSourceType>("$prefix.type")
-        when (trustSourceType) {
-            null -> break
-            TrustSourceType.KeyStore -> add(getKeyStoreTrustSource(prefix))
-            TrustSourceType.LOTL -> add(getListOfTrustedListsTrustSource(prefix))
-            TrustSourceType.LOTE -> add(getListOfTrustedEntitiesTrustSource(prefix))
-        }
-
-        index++
-    }
-}
-
-private fun Environment.getKeyStoreTrustSource(prefix: String): TrustSource.KeyStore {
-    val entity = getRequiredPropertyOrEnvVariable<Entity>("$prefix.entity")
-    val service = getRequiredPropertyOrEnvVariable<Service>("$prefix.service")
-    val properties = checkNotNull(getKeyStoreProperties(prefix)) { "Missing KeyStore configuration for $prefix" }
-    return TrustSource.KeyStore(entity, service, properties)
-}
-
-private fun Environment.getKeyStoreProperties(prefix: String): KeyStoreProperties? =
-    getPropertyOrEnvVariable("$prefix.location")?.let {
-        val location = DefaultResourceLoader().getResource(it)
-        val type = getPropertyOrEnvVariable("$prefix.storeType", "JKS")
-        val password = getPropertyOrEnvVariable("$prefix.password")?.takeIf { password -> password.isNotBlank() }
-        KeyStoreProperties(location, type, password)
+private fun TrustSourceConfigurationProperties.toTrustSource(): TrustSource =
+    when (type) {
+        TrustSourceType.KeyStore -> toKeyStoreTrustSource()
+        TrustSourceType.LOTL -> toLOTLTrustSource()
+        TrustSourceType.LOTE -> toLOTETrustSource()
     }
 
-private fun Environment.getListOfTrustedListsTrustSource(prefix: String): TrustSource.ListOfTrustedLists {
-    val location = Url.parse(getRequiredPropertyOrEnvVariable("$prefix.location"))
-    val signatureVerification = getKeyStoreProperties("$prefix.keyStore")
-    return TrustSource.ListOfTrustedLists(location, signatureVerification)
-}
+private fun TrustSourceConfigurationProperties.toKeyStoreTrustSource(): TrustSource.KeyStore =
+    TrustSource.KeyStore(
+        requireNotNull(entity) { "Missing entity" },
+        requireNotNull(service) { "Missing service" },
+        requireNotNull(keyStore) { "Missing keyStore" }.toKeyStoreProperties(),
+    )
 
-private fun Environment.getListOfTrustedEntitiesTrustSource(prefix: String): TrustSource.ListOfTrustedEntities {
-    val entity = getRequiredPropertyOrEnvVariable<Entity>("$prefix.entity")
-    val location = Url.parse(getRequiredPropertyOrEnvVariable("$prefix.location"))
-    val signatureVerification = getKeyStoreProperties("$prefix.keyStore")
-    return TrustSource.ListOfTrustedEntities(entity, location, signatureVerification)
-}
+private fun TrustSourceConfigurationProperties.toLOTLTrustSource(): TrustSource.ListOfTrustedLists =
+    TrustSource.ListOfTrustedLists(
+        requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
+        keyStore?.toKeyStoreProperties(),
+    )
 
-private fun Environment.getPropertyOrEnvVariable(property: String): String? =
-    getProperty(property) ?: getProperty(toEnvironmentVariable(property))
+private fun TrustSourceConfigurationProperties.toLOTETrustSource(): TrustSource.ListOfTrustedEntities =
+    TrustSource.ListOfTrustedEntities(
+        requireNotNull(entity) { "Missing entity" },
+        requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
+        keyStore?.toKeyStoreProperties(),
+    )
 
-private fun Environment.getPropertyOrEnvVariable(property: String, defaultValue: String): String =
-    getProperty(property) ?: getProperty(toEnvironmentVariable(property)) ?: defaultValue
-
-private inline fun <reified T> Environment.getPropertyOrEnvVariable(property: String): T? =
-    getProperty(key = property) ?: getProperty(key = toEnvironmentVariable(property))
-
-private inline fun <reified T> Environment.getRequiredPropertyOrEnvVariable(property: String): T =
-    getProperty(key = property)
-        ?: getProperty(key = toEnvironmentVariable(property))
-        ?: throw IllegalArgumentException("Missing required property '$property'")
-
-private fun toEnvironmentVariable(property: String): String {
-    return property.replace(".", "_")
-        .replace("[", "_")
-        .replace("]", "")
-        .replace("-", "")
-        .uppercase()
-}
+private fun KeyStoreConfigurationProperties.toKeyStoreProperties(): KeyStoreProperties =
+    KeyStoreProperties(location, type, password)
 
 /**
  * Gets the value of a property that contains a comma-separated list. A list is returned when it contains values.
