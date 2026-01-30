@@ -11,7 +11,6 @@ arrow = "2.2.1.1"
 dependencycheck = "12.1.1"
 swaggerUi = "5.31.0"
 kover = "0.9.4"
-uri = "0.0.19"
 consultation-dss = "0.1.0"
 dss = "6.4.RC1"
 
@@ -28,11 +27,8 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 arrow-stack = { module = "io.arrow-kt:arrow-stack", version.ref = "arrow" }
 arrow-core = { module = "io.arrow-kt:arrow-core" }
-arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines" }
 arrow-core-serialization = { module = "io.arrow-kt:arrow-core-serialization" }
-arrow-autoclose = { module = "io.arrow-kt:arrow-autoclose" }
 swagger-ui = { module = "org.webjars:swagger-ui", version.ref = "swaggerUi" }
-uri = { module = "com.eygraber:uri-kmp", version.ref = "uri" }
 consultation-dss = { module = "eu.europa.ec.eudi:etsi-1196x2-consultation-dss", version.ref = "consultation-dss" }
 dss-bom = { module = "eu.europa.ec.joinup.sd-dss:dss-bom", version.ref = "dss" }
 dss-tsl-validation = { module = "eu.europa.ec.joinup.sd-dss:dss-tsl-validation" }

@@ -30,11 +30,7 @@ dependencies {
     implementation(libs.kotlinx.datetime)
 
     implementation(libs.arrow.core)
-    implementation(libs.arrow.fx.coroutines)
     implementation(libs.arrow.core.serialization)
-    implementation(libs.arrow.autoclose)
-
-    implementation(libs.uri)
 
     implementation(libs.consultation.dss)
     implementation(libs.dss.tsl.validation)
