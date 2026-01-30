@@ -68,7 +68,7 @@ kotlin {
     }
 
     compilerOptions {
-        apiVersion = KotlinVersion.KOTLIN_2_2
+        apiVersion = KotlinVersion.DEFAULT
         freeCompilerArgs.add("-Xjsr305=strict")
         optIn.addAll(
             "kotlinx.serialization.ExperimentalSerializationApi",
