@@ -17,16 +17,21 @@ package eu.europa.ec.eudi.trustvalidator
 
 import arrow.core.NonEmptyList
 import arrow.core.toNonEmptyListOrNull
-import com.eygraber.uri.Url
-import eu.europa.ec.eudi.trustvalidator.adapter.input.scheduling.RefreshTrustSources
+import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrusted
+import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContext
+import eu.europa.ec.eudi.etsi1196x2.consultation.ValidateCertificateChainJvm
+import eu.europa.ec.eudi.etsi1196x2.consultation.VerificationContext
+import eu.europa.ec.eudi.etsi1196x2.consultation.dss.DSSAdapter
+import eu.europa.ec.eudi.etsi1196x2.consultation.dss.usingLoTL
+import eu.europa.ec.eudi.etsi1196x2.consultation.usingKeystore
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.SwaggerUi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
-import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.KeyStoreManager
-import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.ListOfTrustedListsManager
-import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.TrustSourceManager
-import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.plus
-import eu.europa.ec.eudi.trustvalidator.domain.*
-import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted
+import eu.europa.ec.eudi.trustvalidator.domain.Clock
+import eu.europa.ec.eudi.trustvalidator.domain.Clock.Companion.asKotlinClock
+import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
+import eu.europa.esig.dss.tsl.function.GrantedOrRecognizedAtNationalLevelTrustAnchorPeriodPredicate
+import eu.europa.esig.dss.tsl.source.LOTLSource
+import eu.europa.esig.trustedlist.jaxb.tsl.TSPServiceType
 import kotlinx.serialization.json.Json
 import org.springframework.beans.factory.BeanRegistrarDsl
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -41,36 +46,55 @@ import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
 import java.net.URL
+import java.nio.file.Files
+import java.security.KeyStore
+import java.security.cert.TrustAnchor
+import java.security.cert.X509Certificate
+import java.time.Duration
+import java.util.function.Predicate
+import kotlin.time.toKotlinDuration
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted as IsChainTrustedUseCase
 
 internal class Beans : BeanRegistrarDsl({
     registerBean { Clock.System }
 
-    registerBean {
-        val trustSources = run {
-            val trustSourcesProperties = bean<TrustSourcesConfigurationProperties>()
-            trustSourcesProperties.trustSources.map { it.toTrustSource() }
-        }
-        val keyStores = trustSources.filterIsInstance<TrustSource.KeyStore>().toNonEmptyListOrNull()
-        val listsOfTrustedLists = trustSources.filterIsInstance<TrustSource.ListOfTrustedLists>().toNonEmptyListOrNull()
+    registerBean<IsChainTrustedForContext<List<X509Certificate>, TrustAnchor>> {
+        val config = bean<TrustSourcesConfigurationProperties>()
 
-        val keyStoreManager = keyStores?.let { KeyStoreManager(it) }
-        val listOfTrustedListsManager = listsOfTrustedLists?.let { ListOfTrustedListsManager(it, bean()) }
+        val usingLoTL = config.trustSources
+            .filter { TrustSourceType.LOTL == it.type }
+            .associate {
+                val verificationContext = it.verificationContext()
+                val lotlSource = it.lotlSource()
+                verificationContext to lotlSource
+            }.let {
+                IsChainTrustedForContext.usingLoTL(
+                    sourcePerVerification = it,
+                    validateCertificateChain = ValidateCertificateChainJvm {
+                        isRevocationEnabled = false
+                    },
+                    dssAdapter = DSSAdapter.usingFileCacheDataLoader(
+                        cacheDirectory = Files.createTempDirectory("dss"),
+                    ),
+                    clock = bean<Clock>().asKotlinClock(),
+                    ttl = config.timeToLive.toKotlinDuration(),
+                )
+            }
 
-        val manager = listOfNotNull(listOfTrustedListsManager, keyStoreManager).reduceOrNull(TrustSourceManager::plus)
-        checkNotNull(manager) { "No TrustSources configured" }
+        val usingKeystore = config.trustSources
+            .filter { TrustSourceType.KeyStore == it.type }
+            .associate {
+                val verificationContext = it.verificationContext()
+                val isChainTrusted = IsChainTrusted.usingKeystore { loadKeyStore(checkNotNull(it.keyStore)) }
+                verificationContext to isChainTrusted
+            }
+            .let { IsChainTrustedForContext(it) }
+
+        usingLoTL.or(usingKeystore)
     }
 
-    registerBean {
-        val trustSourcesProperties = bean<TrustSourcesConfigurationProperties>()
-        RefreshTrustSources(trustSourcesProperties.refreshInterval, bean())
-    }
+    registerBean { IsChainTrustedUseCase(bean()) }
 
-    // VerifyTrust service
-    registerBean { IsChainTrusted(bean()) }
-
-    //
-    // End points
-    //
     registerBean {
         val trustApi = TrustApi(bean())
         val swaggerUi = SwaggerUi(
@@ -82,9 +106,6 @@ internal class Beans : BeanRegistrarDsl({
         trustApi.route.and(swaggerUi.route)
     }
 
-    //
-    // Other
-    //
     registerBean {
         CodecCustomizer {
             val json = Json {
@@ -129,15 +150,17 @@ internal class Beans : BeanRegistrarDsl({
 @ConfigurationProperties
 data class TrustSourcesConfigurationProperties(
     val trustSources: List<TrustSourceConfigurationProperties>,
-    val refreshInterval: String,
+    val timeToLive: Duration,
 )
 
 data class TrustSourceConfigurationProperties(
     val type: TrustSourceType,
-    val entity: Entity,
-    val service: Service? = null,
+    val verificationContext: VerificationContextOption,
+    val useCase: String? = null,
     val keyStore: KeyStoreConfigurationProperties? = null,
     val location: URL? = null,
+    val serviceTypes: List<String>? = null,
+    val timeToLive: Duration? = null,
 )
 
 enum class TrustSourceType {
@@ -146,42 +169,92 @@ enum class TrustSourceType {
     LOTE,
 }
 
+enum class VerificationContextOption {
+    WalletInstanceAttestation,
+    WalletUnitAttestation,
+    WalletUnitAttestationStatus,
+    PID,
+    PIDStatus,
+    PubEAA,
+    PubEAAStatus,
+    QEAA,
+    QEAAStatus,
+    EAA,
+    EAAStatus,
+    WalletRelyingPartyRegistrationCertificate,
+    WalletRelyingPartyAccessCertificate,
+    Custom,
+}
+
+private fun TrustSourceConfigurationProperties.verificationContext(): VerificationContext {
+    fun useCase(): String = requireNotNull(useCase) { "useCase is required for verificationContext $verificationContext" }
+    return when (verificationContext) {
+        VerificationContextOption.WalletInstanceAttestation -> VerificationContext.WalletInstanceAttestation
+        VerificationContextOption.WalletUnitAttestation -> VerificationContext.WalletUnitAttestation
+        VerificationContextOption.WalletUnitAttestationStatus -> VerificationContext.WalletUnitAttestationStatus
+        VerificationContextOption.PID -> VerificationContext.PID
+        VerificationContextOption.PIDStatus -> VerificationContext.PIDStatus
+        VerificationContextOption.PubEAA -> VerificationContext.PubEAA
+        VerificationContextOption.PubEAAStatus -> VerificationContext.PubEAAStatus
+        VerificationContextOption.QEAA -> VerificationContext.QEAA
+        VerificationContextOption.QEAAStatus -> VerificationContext.QEAAStatus
+        VerificationContextOption.EAA -> VerificationContext.EAA(useCase())
+        VerificationContextOption.EAAStatus -> VerificationContext.EAAStatus(useCase())
+        VerificationContextOption.WalletRelyingPartyRegistrationCertificate -> VerificationContext.WalletRelyingPartyRegistrationCertificate
+        VerificationContextOption.WalletRelyingPartyAccessCertificate -> VerificationContext.WalletRelyingPartyAccessCertificate
+        VerificationContextOption.Custom -> VerificationContext.Custom(useCase())
+    }
+}
+
 data class KeyStoreConfigurationProperties(
     val location: Resource,
     val type: String = "JKS",
     val password: String? = null,
 )
 
-private fun TrustSourceConfigurationProperties.toTrustSource(): TrustSource =
-    when (type) {
-        TrustSourceType.KeyStore -> toKeyStoreTrustSource()
-        TrustSourceType.LOTL -> toLOTLTrustSource()
-        TrustSourceType.LOTE -> toLOTETrustSource()
+/**
+ * Loads a KeyStore from a Resource.
+ *
+ * **This function is blocking.**
+ */
+private fun loadKeyStore(properties: KeyStoreConfigurationProperties): KeyStore =
+    properties.location.inputStream.use {
+        val keyStore = KeyStore.getInstance(properties.type)
+        keyStore.load(it, (properties.password ?: "").toCharArray())
+        keyStore
     }
 
-private fun TrustSourceConfigurationProperties.toKeyStoreTrustSource(): TrustSource.KeyStore =
-    TrustSource.KeyStore(
-        entity,
-        requireNotNull(service) { "Missing service" },
-        requireNotNull(keyStore) { "Missing keyStore" }.toKeyStoreProperties(),
-    )
+/**
+ * Gets a LOTLSource from this TrustSourceConfigurationProperties.
+ *
+ * **This function is blocking.**
+ */
+private fun TrustSourceConfigurationProperties.lotlSource(): LOTLSource =
+    LOTLSource().apply {
+        url = requireNotNull(location) { "location is required for ${TrustSourceType.LOTL} trust source" }.toExternalForm()
 
-private fun TrustSourceConfigurationProperties.toLOTLTrustSource(): TrustSource.ListOfTrustedLists =
-    TrustSource.ListOfTrustedLists(
-        entity,
-        requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
-        keyStore?.toKeyStoreProperties(),
-    )
+        // LOTL signature verification
+        if (null != keyStore) {
+            certificateSource = keyStore.location.inputStream.use {
+                KeyStoreCertificateSource(it, keyStore.type, (keyStore.password ?: "").toCharArray())
+            }
+        }
 
-private fun TrustSourceConfigurationProperties.toLOTETrustSource(): TrustSource.ListOfTrustedEntities =
-    TrustSource.ListOfTrustedEntities(
-        entity,
-        requireNotNull(location) { "Missing location" }.let { Url.parse(it.toExternalForm()) },
-        keyStore?.toKeyStoreProperties(),
-    )
+        tlVersions = listOf(5, 6)
 
-private fun KeyStoreConfigurationProperties.toKeyStoreProperties(): KeyStoreProperties =
-    KeyStoreProperties(location, type, password)
+        isPivotSupport = true
+
+        trustAnchorValidityPredicate = GrantedOrRecognizedAtNationalLevelTrustAnchorPeriodPredicate()
+
+        if (!serviceTypes.isNullOrEmpty()) {
+            trustServicePredicate =
+                serviceTypes.map { serviceType ->
+                    Predicate<TSPServiceType> {
+                        serviceType == it.serviceInformation.serviceTypeIdentifier
+                    }
+                }.reduce { accumulator, current -> accumulator.or(current) }
+        }
+    }
 
 /**
  * Gets the value of a property that contains a comma-separated list. A list is returned when it contains values.

@@ -15,36 +15,89 @@
  */
 package eu.europa.ec.eudi.trustvalidator.port.input.trust
 
+import arrow.core.Either
 import arrow.core.NonEmptyList
-import arrow.core.raise.result
-import eu.europa.ec.eudi.trustvalidator.domain.VerificationCase
-import eu.europa.ec.eudi.trustvalidator.port.out.trust.GetTrustAnchors
-import java.security.cert.CertPathValidator
-import java.security.cert.CertificateFactory
-import java.security.cert.PKIXParameters
+import arrow.core.raise.either
+import arrow.core.raise.ensureNotNull
+import eu.europa.ec.eudi.etsi1196x2.consultation.CertificationChainValidation
+import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContext
+import eu.europa.ec.eudi.etsi1196x2.consultation.VerificationContext
+import eu.europa.ec.eudi.trustvalidator.adapter.out.serialization.X509CertificateChainSerializer
+import kotlinx.serialization.Required
+import kotlinx.serialization.Serializable
+import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
 
-fun interface IsChainTrusted {
-    suspend operator fun invoke(chain: NonEmptyList<X509Certificate>, case: VerificationCase): Boolean
+@Serializable
+enum class VerificationContextTO {
+    WalletInstanceAttestation,
+    WalletUnitAttestation,
+    WalletUnitAttestationStatus,
+    PID,
+    PIDStatus,
+    PubEAA,
+    PubEAAStatus,
+    QEAA,
+    QEAAStatus,
+    EAA,
+    EAAStatus,
+    WalletRelyingPartyRegistrationCertificate,
+    WalletRelyingPartyAccessCertificate,
+    Custom,
 }
 
-fun IsChainTrusted(getTrustAnchors: GetTrustAnchors): IsChainTrusted =
-    object : IsChainTrusted {
-        private val factory by lazy { CertificateFactory.getInstance("X.509") }
-        private val validator by lazy { CertPathValidator.getInstance("PKIX") }
+@Serializable
+data class TrustQueryTO(
+    @Required
+    @Serializable(with = X509CertificateChainSerializer::class)
+    val chain: NonEmptyList<X509Certificate>,
 
-        override suspend fun invoke(
-            chain: NonEmptyList<X509Certificate>,
-            case: VerificationCase,
-        ): Boolean =
-            result {
-                val path = factory.generateCertPath(chain)
-                val trustAnchors = getTrustAnchors(case)
-                val parameters = PKIXParameters(trustAnchors)
-                    .apply {
-                        isRevocationEnabled = false
-                    }
-                validator.validate(path, parameters)
-                true
-            }.getOrElse { false }
+    @Required val verificationContext: VerificationContextTO,
+
+    val useCase: String? = null,
+)
+
+@Serializable
+data class TrustResponseTO(val trusted: Boolean)
+
+@Serializable
+data class ErrorResponseTO(val description: String)
+
+fun interface IsChainTrusted {
+    suspend operator fun invoke(query: TrustQueryTO): Either<ErrorResponseTO, TrustResponseTO>
+}
+
+fun IsChainTrusted(isChainTrustedForContext: IsChainTrustedForContext<List<X509Certificate>, TrustAnchor>): IsChainTrusted =
+    IsChainTrusted {
+        either {
+            val verificationContext = it.verificationContext().bind()
+            val result = ensureNotNull(isChainTrustedForContext(it.chain, verificationContext)) {
+                ErrorResponseTO("No configuration found for VerificationContext $verificationContext")
+            }
+            when (result) {
+                is CertificationChainValidation.Trusted -> TrustResponseTO(true)
+                is CertificationChainValidation.NotTrusted -> TrustResponseTO(false)
+            }
+        }
+    }
+
+private fun TrustQueryTO.verificationContext(): Either<ErrorResponseTO, VerificationContext> =
+    either {
+        fun useCase(): String = ensureNotNull(useCase) { ErrorResponseTO("Missing useCase") }
+        when (verificationContext) {
+            VerificationContextTO.WalletInstanceAttestation -> VerificationContext.WalletInstanceAttestation
+            VerificationContextTO.WalletUnitAttestation -> VerificationContext.WalletUnitAttestation
+            VerificationContextTO.WalletUnitAttestationStatus -> VerificationContext.WalletUnitAttestationStatus
+            VerificationContextTO.PID -> VerificationContext.PID
+            VerificationContextTO.PIDStatus -> VerificationContext.PIDStatus
+            VerificationContextTO.PubEAA -> VerificationContext.PubEAA
+            VerificationContextTO.PubEAAStatus -> VerificationContext.PubEAAStatus
+            VerificationContextTO.QEAA -> VerificationContext.QEAA
+            VerificationContextTO.QEAAStatus -> VerificationContext.QEAAStatus
+            VerificationContextTO.EAA -> VerificationContext.EAA(useCase())
+            VerificationContextTO.EAAStatus -> VerificationContext.EAAStatus(useCase())
+            VerificationContextTO.WalletRelyingPartyRegistrationCertificate -> VerificationContext.WalletRelyingPartyRegistrationCertificate
+            VerificationContextTO.WalletRelyingPartyAccessCertificate -> VerificationContext.WalletRelyingPartyAccessCertificate
+            VerificationContextTO.Custom -> VerificationContext.Custom(useCase())
+        }
     }

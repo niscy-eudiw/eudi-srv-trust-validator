@@ -36,10 +36,10 @@ dependencies {
 
     implementation(libs.uri)
 
-    implementation(libs.dss.service)
-    implementation(libs.dss.validation)
+    implementation(libs.consultation.dss)
     implementation(libs.dss.tsl.validation)
-    implementation(libs.dss.utils.apache.commons)
+    implementation(libs.dss.policy.jaxb)
+    implementation(libs.dss.utils.google.guava)
 
     implementation(libs.spring.boot.starter.webflux)
     implementation(libs.spring.boot.starter.security)
@@ -63,7 +63,9 @@ kotlin {
 
     compilerOptions {
         apiVersion = KotlinVersion.DEFAULT
-        freeCompilerArgs.add("-Xjsr305=strict")
+        freeCompilerArgs.addAll(
+            "-Xjsr305=strict",
+        )
         optIn.addAll(
             "kotlinx.serialization.ExperimentalSerializationApi",
             "kotlin.io.encoding.ExperimentalEncodingApi",

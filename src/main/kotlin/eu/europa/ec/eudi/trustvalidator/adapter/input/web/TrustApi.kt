@@ -15,19 +15,12 @@
  */
 package eu.europa.ec.eudi.trustvalidator.adapter.input.web
 
-import arrow.core.NonEmptyList
-import arrow.core.getOrElse
-import arrow.core.raise.catch
-import arrow.core.raise.either
-import eu.europa.ec.eudi.trustvalidator.adapter.out.serialization.X509CertificateChainSerializer
-import eu.europa.ec.eudi.trustvalidator.domain.VerificationCase
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted
-import kotlinx.serialization.Serializable
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.TrustQueryTO
 import org.springframework.http.MediaType.APPLICATION_JSON
 import org.springframework.web.reactive.function.server.*
 import org.springframework.web.reactive.function.server.ServerResponse.badRequest
 import org.springframework.web.reactive.function.server.ServerResponse.ok
-import java.security.cert.X509Certificate
 
 internal class TrustApi(
     private val isChainTrusted: IsChainTrusted,
@@ -41,33 +34,14 @@ internal class TrustApi(
     }
 
     private suspend fun trustQueryV2(request: ServerRequest): ServerResponse {
-        @Serializable
-        data class TrustQuery(
-            @Serializable(with = X509CertificateChainSerializer::class) val chain: NonEmptyList<X509Certificate>,
-            val case: VerificationCase,
+        val trustQuery = request.awaitBody<TrustQueryTO>()
+        return isChainTrusted(trustQuery).fold(
+            { badRequest().bodyValueAndAwait(it) },
+            { ok().bodyValueAndAwait(it) },
         )
-
-        @Serializable
-        data class TrustResponse(val trusted: Boolean)
-
-        @Serializable
-        data class ErrorResponse(val description: String)
-
-        return either {
-            val query = catch({ request.awaitBody<TrustQuery>() }) { error ->
-                val description = buildString {
-                    append("Unparsable request body")
-                    error.message?.let { append(": $it") }
-                }
-                raise(ErrorResponse(description))
-            }
-            val trusted = isChainTrusted(query.chain, query.case)
-            ok().json().bodyValueAndAwait(TrustResponse(trusted))
-        }.getOrElse { badRequest().json().bodyValueAndAwait(it) }
     }
 
     companion object {
-        const val TRUST = "/trust"
         const val TRUST_V2 = "/v2/trust"
     }
 }
