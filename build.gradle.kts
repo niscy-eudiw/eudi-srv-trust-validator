@@ -111,7 +111,7 @@ tasks.named<BootBuildImage>("bootBuildImage") {
 }
 
 spotless {
-    val ktlintVersion = libs.versions.ktlintVersion.get()
+    val ktlintVersion = libs.versions.ktlint.get()
     kotlin {
         ktlint(ktlintVersion)
         licenseHeaderFile("FileHeader.txt")
