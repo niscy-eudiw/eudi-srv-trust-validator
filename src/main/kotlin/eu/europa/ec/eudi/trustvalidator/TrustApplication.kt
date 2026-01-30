@@ -21,7 +21,7 @@ import org.springframework.boot.runApplication
 import org.springframework.context.annotation.Import
 
 @SpringBootApplication
-@EnableConfigurationProperties(TrustSourcesConfigurationProperties::class)
+@EnableConfigurationProperties(TrustValidatorConfigurationProperties::class)
 @Import(Beans::class)
 class TrustApplication
 
