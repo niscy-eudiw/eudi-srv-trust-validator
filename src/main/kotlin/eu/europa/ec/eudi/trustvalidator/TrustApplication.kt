@@ -15,25 +15,18 @@
  */
 package eu.europa.ec.eudi.trustvalidator
 
-import eu.europa.ec.eudi.trustvalidator.domain.Clock
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
-import org.springframework.context.ApplicationContextInitializer
-import org.springframework.context.support.GenericApplicationContext
+import org.springframework.context.annotation.Import
 import org.springframework.scheduling.annotation.EnableScheduling
 
 @SpringBootApplication
 @EnableConfigurationProperties(TrustSourcesConfigurationProperties::class)
 @EnableScheduling
+@Import(Beans::class)
 class TrustApplication
 
 fun main(args: Array<String>) {
-    runApplication<TrustApplication>(*args) {
-        addInitializers(
-            ApplicationContextInitializer<GenericApplicationContext> {
-                it.register(beans(Clock.System))
-            },
-        )
-    }
+    runApplication<TrustApplication>(*args)
 }

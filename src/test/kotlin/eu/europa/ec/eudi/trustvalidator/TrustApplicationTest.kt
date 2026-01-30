@@ -15,24 +15,13 @@
  */
 package eu.europa.ec.eudi.trustvalidator
 
-import eu.europa.ec.eudi.trustvalidator.domain.Clock
-import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.ApplicationContext
-import org.springframework.context.ApplicationContextInitializer
-import org.springframework.context.support.GenericApplicationContext
-import org.springframework.test.context.ContextConfiguration
-
-class TestContextInitializer : ApplicationContextInitializer<GenericApplicationContext> {
-    override fun initialize(applicationContext: GenericApplicationContext) {
-        applicationContext.register(beans(Clock.System))
-    }
-}
+import kotlin.test.assertTrue
 
 @SpringBootTest(classes = [TrustApplication::class], webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@ContextConfiguration(initializers = [TestContextInitializer::class])
 class TrustApplicationTest {
 
     @Autowired
@@ -40,6 +29,6 @@ class TrustApplicationTest {
 
     @Test
     fun contextLoads() {
-        assertNotNull(applicationContext)
+        assertTrue(this::applicationContext.isInitialized)
     }
 }

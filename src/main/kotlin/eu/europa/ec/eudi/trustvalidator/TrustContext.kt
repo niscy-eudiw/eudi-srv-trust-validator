@@ -27,9 +27,7 @@ import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.TrustSourceManager
 import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.plus
 import eu.europa.ec.eudi.trustvalidator.domain.*
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrusted
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.BeanRegistrarDsl
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.http.codec.CodecCustomizer
@@ -44,11 +42,8 @@ import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
 import java.net.URL
 
-private val log = LoggerFactory.getLogger(TrustApplication::class.java)
-
-@OptIn(ExperimentalSerializationApi::class)
-internal fun beans(clock: Clock) = BeanRegistrarDsl {
-    registerBean { clock }
+internal class Beans : BeanRegistrarDsl({
+    registerBean { Clock.System }
 
     registerBean {
         val trustSources = run {
@@ -128,7 +123,7 @@ internal fun beans(clock: Clock) = BeanRegistrarDsl {
             csrf { disable() } // cross-site request forgery disabled
         }
     }
-}
+})
 
 @Suppress("ConfigurationProperties")
 @ConfigurationProperties
