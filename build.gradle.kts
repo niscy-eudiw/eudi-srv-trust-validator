@@ -15,13 +15,6 @@ plugins {
 
 repositories {
     mavenCentral()
-    mavenLocal()
-    maven {
-        url = uri("https://maven.waltid.dev/releases")
-        mavenContent {
-            releasesOnly()
-        }
-    }
 }
 
 dependencies {
