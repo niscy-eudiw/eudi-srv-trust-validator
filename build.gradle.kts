@@ -78,11 +78,9 @@ kotlin {
     }
 }
 
-testing {
-    suites {
-        val test by getting(JvmTestSuite::class) {
-            useJUnitJupiter()
-        }
+tasks {
+    test {
+        useJUnitPlatform()
     }
 }
 
