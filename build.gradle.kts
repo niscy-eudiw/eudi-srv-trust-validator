@@ -2,13 +2,12 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.springframework.boot.gradle.tasks.bundling.BootBuildImage
 
 plugins {
-    base
-    alias(libs.plugins.spring.boot)
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.plugin.spring)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.spotless)
     alias(libs.plugins.kover)
+    alias(libs.plugins.spring.boot)
     alias(libs.plugins.dependencycheck)
 }
 
