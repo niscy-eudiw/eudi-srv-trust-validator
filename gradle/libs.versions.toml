@@ -12,7 +12,7 @@ dependencycheck = "12.1.1"
 swaggerUi = "5.20.1"
 kover = "0.9.4"
 uri = "0.0.19"
-dss = "6.2"
+dss = "6.4.RC1"
 
 [libraries]
 kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
