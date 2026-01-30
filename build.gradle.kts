@@ -28,6 +28,7 @@ dependencies {
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlin.reflect)
     implementation(libs.kotlinx.coroutines.reactor)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.datetime)
 
     implementation(libs.arrow.core)
@@ -43,7 +44,6 @@ dependencies {
     implementation(libs.dss.utils.apache.commons)
 
     implementation(libs.spring.boot.starter.webflux)
-    implementation(libs.spring.boot.starter.kotlin.serialization)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.spring.boot.starter.thymeleaf)
     implementation(libs.spring.boot.starter.actuator)

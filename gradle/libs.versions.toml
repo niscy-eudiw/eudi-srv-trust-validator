@@ -3,7 +3,7 @@ kotlin = "2.3.0"
 kotlinx-serialization = "1.10.0"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
-springboot = "4.0.0"
+springboot = "4.0.2"
 spotless = "7.0.2"
 java = "17"
 ktlintVersion = "0.50.0"
@@ -20,6 +20,7 @@ kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test" }
 kotlinx-serialization-bom = { module = "org.jetbrains.kotlinx:kotlinx-serialization-bom", version.ref = "kotlinx-serialization" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json" }
 kotlinx-coroutines-bom = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-bom", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test" }
@@ -38,7 +39,6 @@ dss-tsl-validation = { module = "eu.europa.ec.joinup.sd-dss:dss-tsl-validation" 
 dss-utils-apache-commons = { module = "eu.europa.ec.joinup.sd-dss:dss-utils-apache-commons" }
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springboot" }
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
-spring-boot-starter-kotlin-serialization = { module = "org.springframework.boot:spring-boot-starter-kotlin-serialization" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
 spring-boot-starter-thymeleaf = { module = "org.springframework.boot:spring-boot-starter-thymeleaf" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
