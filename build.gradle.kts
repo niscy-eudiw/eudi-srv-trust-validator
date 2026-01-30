@@ -56,10 +56,6 @@ dependencies {
     testImplementation(libs.spring.boot.starter.test)
 }
 
-java {
-    sourceCompatibility = JavaVersion.toVersion(libs.versions.java.get())
-}
-
 kotlin {
 
     jvmToolchain {
