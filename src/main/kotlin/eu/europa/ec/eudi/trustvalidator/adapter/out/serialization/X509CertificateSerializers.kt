@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package eu.europa.ec.eudi.trustvalidator.adapter.out.x5c
+package eu.europa.ec.eudi.trustvalidator.adapter.out.serialization
 
 import arrow.core.NonEmptyList
 import arrow.core.serialization.NonEmptyListSerializer
@@ -23,29 +23,31 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
-import java.io.ByteArrayInputStream
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import kotlin.io.encoding.Base64
 
 object X509CertificateSerializer : KSerializer<X509Certificate> {
 
+    private val base64 by lazy { Base64.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL) }
+
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("X509Certificate", PrimitiveKind.STRING)
 
     override fun serialize(encoder: Encoder, value: X509Certificate) {
-        val encoded = Base64.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).encode(value.encoded)
+        val encoded = base64.encode(value.encoded)
         encoder.encodeString(encoded)
     }
 
     override fun deserialize(decoder: Decoder): X509Certificate {
-        val cert = decoder.decodeString()
-        val decoded = Base64.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(cert)
-        val cf = CertificateFactory.getInstance("X.509")
-        return ByteArrayInputStream(decoded).use { inputStream ->
-            cf.generateCertificate(inputStream) as X509Certificate
+        val encoded = decoder.decodeString()
+        val decoded = base64.decode(encoded)
+        return decoded.inputStream().use {
+            val factory = CertificateFactory.getInstance("X.509")
+            factory.generateCertificate(it) as X509Certificate
         }
     }
 }
+
 object X509CertificateChainSerializer : KSerializer<NonEmptyList<X509Certificate>> by NonEmptyListSerializer(
     X509CertificateSerializer,
 )

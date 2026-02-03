@@ -1,62 +1,56 @@
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
-import org.owasp.dependencycheck.gradle.extension.DependencyCheckExtension
-import org.springframework.boot.gradle.plugin.SpringBootPlugin
 import org.springframework.boot.gradle.tasks.bundling.BootBuildImage
 
 plugins {
-    base
-    alias(libs.plugins.spring.boot)
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.plugin.spring)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.spotless)
+    alias(libs.plugins.kapt)
     alias(libs.plugins.kover)
+    alias(libs.plugins.spring.boot)
     alias(libs.plugins.dependencycheck)
 }
 
 repositories {
     mavenCentral()
-    mavenLocal()
-    maven {
-        url = uri("https://maven.waltid.dev/releases")
-        mavenContent {
-            releasesOnly()
-        }
-    }
 }
 
 dependencies {
-    implementation(platform(SpringBootPlugin.BOM_COORDINATES))
-    implementation("org.springframework.boot:spring-boot-starter-kotlin-serialization:${libs.versions.springboot.get()}")
+    implementation(platform(libs.kotlin.bom))
+    implementation(platform(libs.kotlinx.serialization.bom))
+    implementation(platform(libs.kotlinx.coroutines.bom))
+    implementation(platform(libs.arrow.stack))
+    implementation(platform(libs.dss.bom))
+    implementation(platform(libs.spring.boot.dependencies))
 
-    implementation("org.springframework.boot:spring-boot-starter-webflux")
-    implementation("org.springframework.boot:spring-boot-starter-actuator")
-    implementation("io.projectreactor.kotlin:reactor-kotlin-extensions")
-    implementation("org.jetbrains.kotlin:kotlin-reflect")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
-    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlinx.coroutines.reactor)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.datetime)
+
     implementation(libs.arrow.core)
-    implementation(libs.arrow.fx.coroutines)
     implementation(libs.arrow.core.serialization)
-    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
-    implementation("org.webjars:webjars-locator-lite")
-    implementation(libs.swagger.ui)
-    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.7.1-0.6.x-compat")
-    implementation(libs.uri)
-    implementation(libs.dss.service)
-    implementation(libs.dss.validation)
+
+    implementation(libs.consultation.dss)
     implementation(libs.dss.tsl.validation)
-    implementation(libs.dss.utils.apache.commons)
+    implementation(libs.dss.policy.jaxb)
+    implementation(libs.dss.utils.google.guava)
 
-    testImplementation(kotlin("test"))
+    implementation(libs.spring.boot.starter.webflux)
+    implementation(libs.spring.boot.starter.security)
+    implementation(libs.spring.boot.starter.thymeleaf)
+    implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.reactor.kotlin.extensions)
+    kapt(libs.spring.boot.configuration.processor)
+
+    implementation(libs.webjars.locator.lite)
+    implementation(libs.swagger.ui)
+
+    testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation("org.springframework.boot:spring-boot-starter-test")
-    testImplementation("io.projectreactor:reactor-test")
-    testImplementation("org.bouncycastle:bcpkix-jdk18on:1.82")
-}
-
-java {
-    sourceCompatibility = JavaVersion.toVersion(libs.versions.java.get())
+    testImplementation(libs.spring.boot.starter.test)
 }
 
 kotlin {
@@ -66,8 +60,10 @@ kotlin {
     }
 
     compilerOptions {
-        apiVersion = KotlinVersion.KOTLIN_2_2
-        freeCompilerArgs.add("-Xjsr305=strict")
+        apiVersion = KotlinVersion.DEFAULT
+        freeCompilerArgs.addAll(
+            "-Xjsr305=strict",
+        )
         optIn.addAll(
             "kotlinx.serialization.ExperimentalSerializationApi",
             "kotlin.io.encoding.ExperimentalEncodingApi",
@@ -77,11 +73,9 @@ kotlin {
     }
 }
 
-testing {
-    suites {
-        val test by getting(JvmTestSuite::class) {
-            useJUnitJupiter()
-        }
+tasks {
+    test {
+        useJUnitPlatform()
     }
 }
 
@@ -109,7 +103,7 @@ tasks.named<BootBuildImage>("bootBuildImage") {
 }
 
 spotless {
-    val ktlintVersion = libs.versions.ktlintVersion.get()
+    val ktlintVersion = libs.versions.ktlint.get()
     kotlin {
         ktlint(ktlintVersion)
         licenseHeaderFile("FileHeader.txt")
@@ -119,9 +113,7 @@ spotless {
     }
 }
 
-val nvdApiKey: String? = System.getenv("NVD_API_KEY") ?: properties["nvdApiKey"]?.toString()
-val dependencyCheckExtension = extensions.findByType(DependencyCheckExtension::class.java)
-dependencyCheckExtension?.apply {
+dependencyCheck {
     formats = mutableListOf("XML", "HTML")
-    nvd.apiKey = nvdApiKey ?: ""
+    nvd.apiKey = System.getenv("NVD_API_KEY") ?: properties["nvdApiKey"]?.toString() ?: ""
 }

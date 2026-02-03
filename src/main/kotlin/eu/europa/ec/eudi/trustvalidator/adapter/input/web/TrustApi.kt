@@ -15,70 +15,58 @@
  */
 package eu.europa.ec.eudi.trustvalidator.adapter.input.web
 
-import arrow.core.Either
-import arrow.core.NonEmptyList
-import eu.europa.ec.eudi.trustvalidator.adapter.out.x5c.X509CertificateChainSerializer
-import eu.europa.ec.eudi.trustvalidator.domain.ProviderType
-import eu.europa.ec.eudi.trustvalidator.port.input.VerifyTrust
-import kotlinx.serialization.Serializable
+import arrow.core.raise.catch
+import arrow.core.raise.context.bind
+import arrow.core.raise.context.raise
+import arrow.core.raise.either
+import arrow.core.raise.result
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.ErrorResponseTO
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrustedUseCase
+import eu.europa.ec.eudi.trustvalidator.port.input.trust.TrustQueryTO
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType.APPLICATION_JSON
 import org.springframework.web.reactive.function.server.*
-import org.springframework.web.reactive.function.server.RequestPredicates.version
-import org.springframework.web.reactive.function.server.ServerResponse.badRequest
 import org.springframework.web.reactive.function.server.ServerResponse.ok
-import java.security.cert.X509Certificate
+import org.springframework.web.reactive.function.server.ServerResponse.status
 
 internal class TrustApi(
-    private val verifyTrust: VerifyTrust,
+    private val isChainTrusted: IsChainTrustedUseCase,
 ) {
     val route: RouterFunction<ServerResponse> = coRouter {
         POST(
-            TRUST_QUERY,
-            contentType(APPLICATION_JSON) and accept(APPLICATION_JSON) and version("1.0.0"),
+            TRUST,
+            contentType(APPLICATION_JSON) and accept(APPLICATION_JSON),
             ::trustQuery,
         )
     }
 
     private suspend fun trustQuery(request: ServerRequest): ServerResponse {
-        val body = Either
-            .catch { request.awaitBody<TrustQueryRequest>() }
-            .fold(
-                ifLeft = { e ->
-                    return badRequest().json().bodyValueAndAwait(ErrorResponse("Invalid request body: ${e.message}"))
-                },
-                ifRight = { it },
-            )
+        val result = either {
+            val trustQuery = catch({ request.awaitBody<TrustQueryTO>() }) {
+                val description = buildString {
+                    append("Request body cannot be parsed")
+                    if (null != it.message) {
+                        append(": ${it.message}")
+                    }
+                }
+                raise(ErrorResponseTO.ClientErrorResponseTO(description))
+            }
+            isChainTrusted(trustQuery).bind()
+        }
 
-        val serviceType = body.serviceType.toDomain()
-
-        return verifyTrust(serviceType, body.x5c).fold(
-            ifLeft = { error ->
-                badRequest().json().bodyValueAndAwait(error)
+        return result.fold(
+            {
+                val status = when (it) {
+                    is ErrorResponseTO.ClientErrorResponseTO -> HttpStatus.BAD_REQUEST
+                    is ErrorResponseTO.ServerErrorResponseTO -> HttpStatus.INTERNAL_SERVER_ERROR
+                }
+                status(status).bodyValueAndAwait(it)
             },
-            ifRight = { trusted ->
-                ok().contentType(APPLICATION_JSON).bodyValueAndAwait(TrustQueryResponse(trusted))
-            },
+            { ok().bodyValueAndAwait(it) },
         )
     }
 
     companion object {
-        const val TRUST_QUERY = "/trust"
+        const val TRUST = "/trust"
     }
 }
-
-@Serializable
-internal data class TrustQueryRequest(
-    @Serializable(with = X509CertificateChainSerializer::class)
-    val x5c: NonEmptyList<X509Certificate>,
-    val serviceType: ProviderType,
-)
-
-@Serializable
-internal data class TrustQueryResponse(
-    val trusted: Boolean,
-)
-
-@Serializable
-internal data class ErrorResponse(
-    val error: String,
-)
