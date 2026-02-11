@@ -16,82 +16,65 @@
 package eu.europa.ec.eudi.trustvalidator
 
 import arrow.core.NonEmptyList
-import arrow.core.raise.catch
 import arrow.core.toNonEmptyListOrNull
 import eu.europa.ec.eudi.etsi1196x2.consultation.*
-import eu.europa.ec.eudi.etsi1196x2.consultation.dss.DSSAdapter
-import eu.europa.ec.eudi.etsi1196x2.consultation.dss.usingLoTL
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.SwaggerUi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
 import eu.europa.ec.eudi.trustvalidator.adapter.out.scheduling.dss.CleanupDSSCache
+import eu.europa.ec.eudi.trustvalidator.config.TrustValidatorConfigurationProperties
+import eu.europa.ec.eudi.trustvalidator.config.getTrustAnchorsUsingKeyStore
+import eu.europa.ec.eudi.trustvalidator.config.getTrustAnchorsUsingLoTL
+import eu.europa.ec.eudi.trustvalidator.config.lotlSources
 import eu.europa.ec.eudi.trustvalidator.port.input.trust.IsChainTrustedUseCase
-import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
-import eu.europa.esig.dss.tsl.function.GrantedOrRecognizedAtNationalLevelTrustAnchorPeriodPredicate
 import eu.europa.esig.dss.tsl.source.LOTLSource
 import kotlinx.serialization.json.Json
-import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.BeanRegistrarDsl
-import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.http.codec.CodecCustomizer
 import org.springframework.core.env.Environment
 import org.springframework.core.env.getProperty
-import org.springframework.core.io.Resource
 import org.springframework.http.codec.json.KotlinSerializationJsonDecoder
 import org.springframework.http.codec.json.KotlinSerializationJsonEncoder
 import org.springframework.security.config.web.server.ServerHttpSecurity
 import org.springframework.security.config.web.server.invoke
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.reactive.CorsConfigurationSource
-import java.net.URI
-import java.net.URL
-import java.nio.file.Path
-import java.security.KeyStore
 import java.security.cert.TrustAnchor
-import java.security.cert.X509Certificate
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.time.Clock
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
 
-private val log = LoggerFactory.getLogger(TrustValidatorServiceContext::class.java)
-
+@OptIn(SensitiveApi::class)
 internal class TrustValidatorServiceContext : BeanRegistrarDsl({
     registerBean { Clock.System }
 
+    registerBean(name = "dss-executor", infrastructure = true, autowirable = false, lazyInit = true) { Executors.newCachedThreadPool() }
+
+    registerBean(name = "get-trust-anchors-using-lotl", infrastructure = true, autowirable = false) {
+        val config = bean<TrustValidatorConfigurationProperties>()
+        config.trustSources?.getTrustAnchorsUsingLoTL(
+            clock = bean(),
+            cacheDirectory = config.dss.cacheLocation,
+            getExecutorService = { bean<ExecutorService>("dss-executor") },
+        ) ?: GetTrustAnchors { null }
+    }
+
     registerBean {
         val config = bean<TrustValidatorConfigurationProperties>()
-        val trustSources = config.trustSources
-
-        val usingLoTL = IsChainTrustedForContext.usingLoTL(
-            sourcePerVerification = trustSources?.lotlSources().orEmpty(),
-            validateCertificateChain = ValidateCertificateChainJvm {
-                isRevocationEnabled = false
-            },
-            dssAdapter = DSSAdapter.usingFileCacheDataLoader(
-                fileCacheExpiration = 24.hours,
-                cacheDirectory = config.dss.cacheLocation,
-            ),
-            clock = bean<Clock>(),
-            ttl = 10.minutes,
-        )
-
-        val usingKeyStore = IsChainTrustedForContext(trustSources?.keyStoreSources().orEmpty())
-
-        IsChainTrustedUseCase { chain, context ->
-            suspend fun IsChainTrustedForContext<List<X509Certificate>, TrustAnchor>.isTrusted(
-                chain: NonEmptyList<X509Certificate>,
-                context: VerificationContext,
-            ): CertificationChainValidation<TrustAnchor>? =
-                catch({ invoke(chain, context) }) {
-                    CertificationChainValidation.NotTrusted(it)
-                }
-
-            when (val usingLoTL = usingLoTL.isTrusted(chain, context)) {
-                is CertificationChainValidation.Trusted -> usingLoTL
-                is CertificationChainValidation.NotTrusted -> usingKeyStore.isTrusted(chain, context) ?: usingLoTL
-                null -> usingKeyStore.isTrusted(chain, context)
-            }
+        val getTrustAnchorsFromLoTL = run {
+            val getTrustAnchorsFromLoTL = bean<GetTrustAnchors<LOTLSource, TrustAnchor>>("get-trust-anchors-using-lotl")
+            val lotlSources = config.trustSources?.lotlSources() ?: emptyMap()
+            GetTrustAnchorsForSupportedQueries.transform(getTrustAnchorsFromLoTL, lotlSources)
         }
+        val getTrustAnchorsFromKeyStore = config.trustSources?.getTrustAnchorsUsingKeyStore() ?: GetTrustAnchorsForSupportedQueries.empty()
+        val validateCertificateChain = ValidateCertificateChainJvm { isRevocationEnabled = false }
+
+        IsChainTrustedForEUDIW(
+            validateCertificateChain,
+            getTrustAnchorsFromLoTL,
+        ).recoverWith { getTrustAnchorsFromKeyStore }
     }
+
+    registerBean<IsChainTrustedUseCase>()
 
     registerBean {
         val configuration = bean<TrustValidatorConfigurationProperties>()
@@ -149,56 +132,6 @@ internal class TrustValidatorServiceContext : BeanRegistrarDsl({
     }
 })
 
-@ConfigurationProperties("trust-validator")
-data class TrustValidatorConfigurationProperties(
-    val dss: DSSConfigurationProperties,
-    val trustSources: TrustSourcesConfigurationProperties? = null,
-)
-
-data class DSSConfigurationProperties(
-    val cacheLocation: Path,
-)
-
-data class TrustSourcesConfigurationProperties(
-    val walletProviders: LoTLConfigurationProperties? = null,
-    val pidProviders: LoTLConfigurationProperties? = null,
-    val qeaaProviders: LoTLConfigurationProperties? = null,
-    val pubEaaProviders: LoTLConfigurationProperties? = null,
-    val eaaProviders: List<EAALoTLConfigurationProperties>? = null,
-    val wrpacProviders: LoTLConfigurationProperties? = null,
-    val wrprcProviders: LoTLConfigurationProperties? = null,
-    val keyStore: KeyStoreConfigurationProperties? = null,
-)
-
-data class LoTLConfigurationProperties(
-    val location: URL,
-    val signatureVerification: KeyStoreConfigurationProperties? = null,
-    val issuanceService: URI,
-    val revocationService: URI,
-)
-
-data class KeyStoreConfigurationProperties(
-    val location: Resource,
-    val keyStoreType: String = "JKS",
-    val password: Password? = null,
-) {
-    init {
-        require(location.exists() && location.isFile && location.isReadable) {
-            "location must point to an existing readable file"
-        }
-    }
-}
-
-@JvmInline
-value class Password(val value: String) {
-    override fun toString(): String = "Password(REDACTED)"
-}
-
-data class EAALoTLConfigurationProperties(
-    val useCase: String,
-    val lotl: LoTLConfigurationProperties,
-)
-
 /**
  * Gets the value of a property that contains a comma-separated list. A list is returned when it contains values.
  *
@@ -218,143 +151,5 @@ private fun Environment.getOptionalList(
         ?.map { transform(it) }
         ?.toNonEmptyListOrNull()
 
-private fun LoTLConfigurationProperties.issuanceLoTLSource(): LOTLSource =
-    lotlSourceOf(location, signatureVerification, issuanceService)
-
-private fun LoTLConfigurationProperties.revocationLoTLSource(): LOTLSource =
-    lotlSourceOf(location, signatureVerification, revocationService)
-
-private fun lotlSourceOf(
-    location: URL,
-    signatureVerificationKeyStore: KeyStoreConfigurationProperties?,
-    serviceType: URI,
-): LOTLSource =
-    LOTLSource().apply {
-        url = location.toExternalForm()
-        trustAnchorValidityPredicate = GrantedOrRecognizedAtNationalLevelTrustAnchorPeriodPredicate()
-        tlVersions = listOf(5, 6)
-        trustServicePredicate = { serviceType.toString() == it.serviceInformation.serviceTypeIdentifier }
-        if (null != signatureVerificationKeyStore) {
-            certificateSource = signatureVerificationKeyStore.location.inputStream.use {
-                KeyStoreCertificateSource(
-                    it,
-                    signatureVerificationKeyStore.keyStoreType,
-                    (signatureVerificationKeyStore.password?.value ?: "").toCharArray(),
-                )
-            }
-        }
-    }
-
-private fun TrustSourcesConfigurationProperties.lotlSources(): Map<VerificationContext, LOTLSource> =
-    buildMap {
-        // Wallet Providers
-        if (null != walletProviders) {
-            log.info("Configuring Wallet Providers using LoTL: $walletProviders")
-            val walletProvidersIssuance = walletProviders.issuanceLoTLSource()
-            val walletProvidersRevocation = walletProviders.revocationLoTLSource()
-
-            put(VerificationContext.WalletInstanceAttestation, walletProvidersIssuance)
-            put(VerificationContext.WalletUnitAttestation, walletProvidersIssuance)
-            put(VerificationContext.WalletUnitAttestationStatus, walletProvidersRevocation)
-        }
-
-        // PID Providers
-        if (null != pidProviders) {
-            log.info("Configuring PID Providers using LoTL: $pidProviders")
-            put(VerificationContext.PID, pidProviders.issuanceLoTLSource())
-            put(VerificationContext.PIDStatus, pidProviders.revocationLoTLSource())
-        }
-
-        // QEAA Providers
-        if (null != qeaaProviders) {
-            log.info("Configuring QEAA Providers using LoTL: $qeaaProviders")
-            put(VerificationContext.QEAA, qeaaProviders.issuanceLoTLSource())
-            put(VerificationContext.QEAAStatus, qeaaProviders.revocationLoTLSource())
-        }
-
-        // PubEAA Providers
-        if (null != pubEaaProviders) {
-            log.info("Configuring PubEAA Providers using LoTL: $pubEaaProviders")
-            put(VerificationContext.PubEAA, pubEaaProviders.issuanceLoTLSource())
-            put(VerificationContext.PubEAAStatus, pubEaaProviders.revocationLoTLSource())
-        }
-
-        // EAA Providers
-        if (!eaaProviders.isNullOrEmpty()) {
-            eaaProviders.forEach { eaaProvider ->
-                log.info("Configuring EAA Provider ${eaaProvider.useCase} using LoTL: ${eaaProvider.lotl}")
-                put(VerificationContext.EAA(eaaProvider.useCase), eaaProvider.lotl.issuanceLoTLSource())
-                put(VerificationContext.EAAStatus(eaaProvider.useCase), eaaProvider.lotl.revocationLoTLSource())
-            }
-        }
-
-        // Wallet Relying Party Access Certificate Providers
-        if (null != wrpacProviders) {
-            log.info("Configuring WRPAC Providers using LoTL: $wrpacProviders")
-            put(VerificationContext.WalletRelyingPartyAccessCertificate, wrpacProviders.issuanceLoTLSource())
-        }
-
-        // Wallet Relying Party Registration Certificate Providers
-        if (null != wrprcProviders) {
-            log.info("Configuring WRPRC Providers using LoTL: $wrprcProviders")
-            put(VerificationContext.WalletRelyingPartyRegistrationCertificate, wrprcProviders.issuanceLoTLSource())
-        }
-    }
-
-private fun TrustSourcesConfigurationProperties.keyStoreSources():
-    Map<VerificationContext, IsChainTrusted<List<X509Certificate>, TrustAnchor>> =
-    buildMap {
-        if (null != keyStore) {
-            val isChainTrusted = IsChainTrusted.usingKeystore(
-                ValidateCertificateChainJvm {
-                    isRevocationEnabled = false
-                },
-            ) {
-                keyStore.location.inputStream.use { inputStream ->
-                    KeyStore.getInstance(keyStore.keyStoreType).apply {
-                        load(inputStream, (keyStore.password?.value ?: "").toCharArray())
-                    }
-                }.also {
-                    log.info("KeyStore contains the following aliases: ${it.aliases().toList().joinToString(separator = ", ")}")
-                }
-            }
-
-            // Wallet Providers
-            log.info("Configuring Wallet Providers using KeyStore: $keyStore")
-            put(VerificationContext.WalletInstanceAttestation, isChainTrusted)
-            put(VerificationContext.WalletUnitAttestation, isChainTrusted)
-            put(VerificationContext.WalletUnitAttestationStatus, isChainTrusted)
-
-            // PID Providers
-            log.info("Configuring PID Providers using KeyStore: $keyStore")
-            put(VerificationContext.PID, isChainTrusted)
-            put(VerificationContext.PIDStatus, isChainTrusted)
-
-            // QEAA Providers
-            log.info("Configuring QEAA Providers using KeyStore: $keyStore")
-            put(VerificationContext.QEAA, isChainTrusted)
-            put(VerificationContext.QEAAStatus, isChainTrusted)
-
-            // PubEAA Providers
-            log.info("Configuring PubEAA Providers using KeyStore: $keyStore")
-            put(VerificationContext.PubEAA, isChainTrusted)
-            put(VerificationContext.PubEAAStatus, isChainTrusted)
-
-            // EAA Providers
-            if (!eaaProviders.isNullOrEmpty()) {
-                eaaProviders.forEach { eaaProvider ->
-                    log.info("Configuring EAA Provider ${eaaProvider.useCase} using KeyStore: $keyStore")
-                    put(VerificationContext.EAA(eaaProvider.useCase), isChainTrusted)
-                    put(VerificationContext.EAAStatus(eaaProvider.useCase), isChainTrusted)
-                }
-            }
-
-            // Wallet Relying Party Access Certificate Providers
-            log.info("Configuring WRPAC Providers using KeyStore: $keyStore")
-            put(VerificationContext.WalletRelyingPartyAccessCertificate, isChainTrusted)
-
-            // Wallet Relying Party Registration Certificate Providers
-            log.info("Configuring WRPRC Providers using KeyStore: $keyStore")
-            put(VerificationContext.WalletRelyingPartyRegistrationCertificate, isChainTrusted)
-        }
-    }
+private fun <CTX : Any, TRUST_ANCHOR : Any> GetTrustAnchorsForSupportedQueries.Companion.empty():
+    GetTrustAnchorsForSupportedQueries<CTX, TRUST_ANCHOR> = GetTrustAnchorsForSupportedQueries(emptySet()) { null }

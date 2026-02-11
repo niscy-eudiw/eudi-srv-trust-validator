@@ -21,7 +21,6 @@ dependencies {
     implementation(platform(libs.kotlinx.serialization.bom))
     implementation(platform(libs.kotlinx.coroutines.bom))
     implementation(platform(libs.arrow.stack))
-    implementation(platform(libs.dss.bom))
     implementation(platform(libs.spring.boot.dependencies))
 
     implementation(libs.kotlin.stdlib)
