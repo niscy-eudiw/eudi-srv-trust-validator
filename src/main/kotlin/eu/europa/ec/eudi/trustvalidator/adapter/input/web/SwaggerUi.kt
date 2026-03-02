@@ -16,7 +16,6 @@
 package eu.europa.ec.eudi.trustvalidator.adapter.input.web
 
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.web.reactive.function.server.RouterFunction
 import org.springframework.web.reactive.function.server.ServerResponse
@@ -37,12 +36,6 @@ internal class SwaggerUi(
     private val webJarResourcesBasePath: String,
 ) {
     val route: RouterFunction<ServerResponse> = coRouter {
-        (GET("") or GET("/")) {
-            log.info("Redirecting to {}", SWAGGER_UI)
-            ServerResponse.status(HttpStatus.TEMPORARY_REDIRECT)
-                .renderAndAwait("redirect:$SWAGGER_UI")
-        }
-
         GET(SWAGGER_UI, contentType(MediaType.ALL) and accept(MediaType.TEXT_HTML)) {
             log.info("Displaying Swagger UI")
             ServerResponse.ok()
