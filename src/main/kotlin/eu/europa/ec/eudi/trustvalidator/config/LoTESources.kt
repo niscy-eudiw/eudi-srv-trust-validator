@@ -15,10 +15,9 @@
  */
 package eu.europa.ec.eudi.trustvalidator.config
 
-import arrow.core.raise.catch
 import eu.europa.ec.eudi.etsi119602.URI
 import eu.europa.ec.eudi.etsi119602.consultation.*
-import eu.europa.ec.eudi.etsi119602.x509Certificate
+import eu.europa.ec.eudi.etsi119602.consultation.eu.ServiceDigitalIdentityCertificateType
 import eu.europa.ec.eudi.etsi1196x2.consultation.*
 import io.ktor.client.*
 import io.ktor.client.plugins.*
@@ -28,47 +27,45 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.security.cert.TrustAnchor
 import java.security.cert.X509Certificate
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
+import java.nio.file.Path as JavaPath
+import kotlinx.io.files.Path as KotlinXPath
 
 private val log = LoggerFactory.getLogger("getTrustAnchorsUsingLoTE")
 
 private typealias LoteLocations = SupportedLists<URI>
-private typealias LoteServices = SupportedLists<LotEMata<VerificationContext>>
+private typealias LoteServices = SupportedLists<LotEMeta<VerificationContext>>
 
-suspend fun TrustSourcesConfigurationProperties.isChainTrustedForContextUsingLoTE(
+fun TrustSourcesConfigurationProperties.isChainTrustedForContextUsingLoTE(
+    scope: DisposableScope,
+    cacheDirectory: JavaPath,
     httpClient: HttpClient,
+    clock: Clock,
     continueOnProblem: ContinueOnProblem = ContinueOnProblem.Never,
     constraints: LoadLoTEAndPointers.Constraints,
 ): ComposeChainTrust<List<X509Certificate>, VerificationContext, TrustAnchor>? =
     loteSources()?.let { (locations, services) ->
         log.info(locations)
-        val provisionTrustAnchorsFromLOTE = run {
-            val loadLoteAndPointers = LoadLoTEAndPointers(
-                constraints = constraints,
-                verifyJwtSignature = { VerifyJwtSignature.Outcome.Verified(it) },
-                loadLoTE = { uri ->
-                    catch({
-                        val lote = httpClient.get {
-                            url(uri)
-                            expectSuccess = true
-                        }.bodyAsText()
-                        LoadLoTE.Outcome.Loaded(lote)
-                    }) { error -> LoadLoTE.Outcome.NotFound(error) }
-                },
-            )
-
-            ProvisionTrustAnchorsFromLoTEs(
-                loadLoteAndPointers,
-                services,
+        val provisionTrustAnchorsFromLOTE =
+            ProvisionTrustAnchorsFromLoTEs.eudiwJvm(
+                loadLoTEAndPointers = LoadLoTEAndPointers(
+                    constraints,
+                    verifyJwtSignature = { VerifyJwtSignature.Outcome.Verified(it) },
+                    LoadSingleLoTEWithFileCache(
+                        cacheDirectory = KotlinXPath(cacheDirectory.toString()),
+                        downloadSingleLoTE = DownloadSingleLoTE(httpClient),
+                        fileCacheExpiration = 24.hours,
+                        clock = clock,
+                    ),
+                ),
+                svcTypePerCtx = services,
                 continueOnProblem = continueOnProblem,
-                createTrustAnchors = { serviceDigitalIdentity ->
-                    serviceDigitalIdentity.x509Certificates.orEmpty().map { TrustAnchor(it.x509Certificate(), null) }
-                },
-                directTrust = ValidateCertificateChainUsingDirectTrustJvm,
                 pkix = ValidateCertificateChainUsingPKIXJvm { isRevocationEnabled = false },
             )
-        }
 
-        provisionTrustAnchorsFromLOTE(locations, 4)
+        provisionTrustAnchorsFromLOTE.cached(scope, locations, ttl = 10.minutes)
     }
 
 private fun TrustSourcesConfigurationProperties.loteSources(): Pair<LoteLocations, LoteServices>? {
@@ -95,69 +92,77 @@ private fun TrustSourcesConfigurationProperties.loteLocations(): LoteLocations =
 private fun TrustSourcesConfigurationProperties.loteServices(): LoteServices =
     LoteServices(
         pidProviders = pidProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.PID to it.issuanceService.toString(),
                     VerificationContext.PIDStatus to it.revocationService.toString(),
                 ),
-                true,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
         walletProviders = walletProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.WalletInstanceAttestation to it.issuanceService.toString(),
                     VerificationContext.WalletUnitAttestation to it.issuanceService.toString(),
                     VerificationContext.WalletUnitAttestationStatus to it.revocationService.toString(),
                 ),
-                true,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
         wrpacProviders = wrpacProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.WalletRelyingPartyAccessCertificate to it.issuanceService.toString(),
                 ),
-                false,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
         wrprcProviders = wrprcProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.WalletRelyingPartyRegistrationCertificate to it.issuanceService.toString(),
                 ),
-                false,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
         pubEaaProviders = pubEaaProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.PubEAA to it.issuanceService.toString(),
                     VerificationContext.PubEAAStatus to it.revocationService.toString(),
                 ),
-                true,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
         qeaProviders = qeaaProviders?.lote?.let {
-            LotEMata(
+            LotEMeta(
                 mapOf(
                     VerificationContext.QEAA to it.issuanceService.toString(),
                     VerificationContext.QEAAStatus to it.revocationService.toString(),
                 ),
-                true,
+                ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                null,
             )
         },
-        eaaProviders = eaaProviders?.mapNotNull { eaaProvider ->
-            eaaProvider.lote?.let {
-                eaaProvider.useCase to LotEMata(
-                    mapOf(
-                        VerificationContext.EAA(eaaProvider.useCase) to it.issuanceService.toString(),
-                        VerificationContext.EAAStatus(eaaProvider.useCase) to it.revocationService.toString(),
-                    ),
-                    true,
-                )
-            }
-        }?.toMap().orEmpty(),
+        eaaProviders = eaaProviders.orEmpty()
+            .mapNotNull { eaaProvider ->
+                eaaProvider.lote?.let {
+                    eaaProvider.useCase to LotEMeta(
+                        mapOf(
+                            VerificationContext.EAA(eaaProvider.useCase) to it.issuanceService.toString(),
+                            VerificationContext.EAAStatus(eaaProvider.useCase) to it.revocationService.toString(),
+                        ),
+                        ServiceDigitalIdentityCertificateType.EndEntityOrCA,
+                        null,
+                    )
+                }
+            }.toMap(),
     )
 
 private fun SupportedLists<*>.isEmpty(): Boolean =
