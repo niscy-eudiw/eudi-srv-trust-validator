@@ -18,6 +18,7 @@ package eu.europa.ec.eudi.trustvalidator.config
 import eu.europa.ec.eudi.etsi119602.Uri
 import eu.europa.ec.eudi.etsi119602.consultation.*
 import eu.europa.ec.eudi.etsi119602.consultation.eu.ServiceDigitalIdentityCertificateType
+import eu.europa.ec.eudi.etsi119602.consultation.eu.walletProviderSigningCertificateProfile
 import eu.europa.ec.eudi.etsi1196x2.consultation.*
 import io.ktor.client.*
 import io.ktor.client.plugins.*
@@ -109,15 +110,11 @@ private fun TrustSourcesConfigurationProperties.loteServices(): LoteServices =
         walletProviders = walletProviders?.lote?.let {
             LotEMeta(
                 mapOf(
-                    VerificationContext.WalletInstanceAttestation to LotEMeta.SvcAndEEProfile(
+                    VerificationContext.WalletProviderAttestation to LotEMeta.SvcAndEEProfile(
                         Uri(it.issuanceService.toString()),
-                        null,
+                        walletProviderSigningCertificateProfile(),
                     ),
-                    VerificationContext.WalletUnitAttestation to LotEMeta.SvcAndEEProfile(
-                        Uri(it.issuanceService.toString()),
-                        null,
-                    ),
-                    VerificationContext.WalletUnitAttestationStatus to LotEMeta.SvcAndEEProfile(
+                    VerificationContext.WalletOrKeyStorageStatus to LotEMeta.SvcAndEEProfile(
                         Uri(it.revocationService.toString()),
                         null,
                     ),
@@ -220,9 +217,8 @@ private fun Logger.info(locations: LoteLocations) {
         info(VerificationContext.PIDStatus, it)
     }
     locations.walletProviders?.let {
-        info(VerificationContext.WalletInstanceAttestation, it)
-        info(VerificationContext.WalletUnitAttestation, it)
-        info(VerificationContext.WalletUnitAttestationStatus, it)
+        info(VerificationContext.WalletProviderAttestation, it)
+        info(VerificationContext.WalletOrKeyStorageStatus, it)
     }
     locations.wrpacProviders?.let {
         info(VerificationContext.WalletRelyingPartyAccessCertificate, it)
