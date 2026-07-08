@@ -1,19 +1,19 @@
 [versions]
-kotlin = "2.3.0"
-kotlinx-serialization = "1.10.0"
-kotlinx-coroutines = "1.10.2"
-kotlinx-datetime = "0.7.1"
-springboot = "4.0.2"
-spotless = "7.0.2"
-java = "17"
-ktlint = "0.50.0"
-arrow = "2.2.1.1"
-dependencycheck = "12.1.1"
-swaggerUi = "5.31.0"
-kover = "0.9.4"
-consultation = "0.4.0-alpha.1-SNAPSHOT"
-ktor = "3.4.0"
-bootstrap = "5.3.3"
+kotlin = "2.4.0"
+kotlinx-serialization = "1.11.0"
+kotlinx-coroutines = "1.11.0"
+kotlinx-datetime = "0.8.0"
+spring-boot = "4.1.0"
+spotless = "8.8.0"
+java = "25"
+ktlint = "1.8.0"
+arrow = "2.2.3"
+dependencycheck = "12.2.2"
+swagger-ui = "5.32.8"
+kover = "0.9.8"
+consultation = "0.4.0-alpha.1"
+ktor = "3.5.1"
+bootstrap = "5.3.8"
 
 [libraries]
 kotlin-bom = { module = "org.jetbrains.kotlin:kotlin-bom", version.ref = "kotlin" }
@@ -29,13 +29,13 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 arrow-stack = { module = "io.arrow-kt:arrow-stack", version.ref = "arrow" }
 arrow-core = { module = "io.arrow-kt:arrow-core" }
 arrow-core-serialization = { module = "io.arrow-kt:arrow-core-serialization" }
-swagger-ui = { module = "org.webjars:swagger-ui", version.ref = "swaggerUi" }
+swagger-ui = { module = "org.webjars:swagger-ui", version.ref = "swagger-ui" }
 consultation-lotl = { module = "eu.europa.ec.eudi:etsi-1196x2-consultation-dss", version.ref = "consultation" }
 consultation-lote = { module = "eu.europa.ec.eudi:etsi-119602-consultation", version.ref = "consultation" }
 dss-tsl-validation = { module = "eu.europa.ec.joinup.sd-dss:dss-tsl-validation" }
 dss-policy-jaxb = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-jaxb" }
 dss-utils-google-guava = { module = "eu.europa.ec.joinup.sd-dss:dss-utils-google-guava" }
-spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springboot" }
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
 spring-boot-starter-thymeleaf = { module = "org.springframework.boot:spring-boot-starter-thymeleaf" }
@@ -50,7 +50,7 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 bootstrap = { module = "org.webjars:bootstrap", version.ref = "bootstrap" }
 
 [plugins]
-spring-boot = { id = "org.springframework.boot", version.ref = "springboot" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-plugin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
