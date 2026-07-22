@@ -21,14 +21,13 @@ import eu.europa.ec.eudi.etsi119602.consultation.ContinueOnProblem
 import eu.europa.ec.eudi.etsi119602.consultation.LoadLoTEAndPointers
 import eu.europa.ec.eudi.etsi1196x2.consultation.DisposableContainer
 import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContextF
-import eu.europa.ec.eudi.etsi1196x2.consultation.SensitiveApi
 import eu.europa.ec.eudi.etsi1196x2.consultation.VerificationContext
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.SwaggerUi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustApi
 import eu.europa.ec.eudi.trustvalidator.adapter.input.web.TrustValidatorUi
 import eu.europa.ec.eudi.trustvalidator.adapter.out.consultation.empty
-import eu.europa.ec.eudi.trustvalidator.adapter.out.consultation.or
 import eu.europa.ec.eudi.trustvalidator.adapter.out.scheduling.dss.CleanupDSSCache
+import eu.europa.ec.eudi.trustvalidator.adapter.out.trust.IsChainTrusted
 import eu.europa.ec.eudi.trustvalidator.config.TrustValidatorConfigurationProperties
 import eu.europa.ec.eudi.trustvalidator.config.isChainTrustedForContextUsingKeyStore
 import eu.europa.ec.eudi.trustvalidator.config.isChainTrustedForContextUsingLoTE
@@ -56,7 +55,6 @@ import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
 import kotlin.time.Clock
 
-@OptIn(SensitiveApi::class)
 internal class TrustValidatorServiceContext :
     BeanRegistrarDsl({
         registerBean { Clock.System }
@@ -114,13 +112,19 @@ internal class TrustValidatorServiceContext :
 
         registerBean {
             val isChainTrustedUsingLoTL =
-                bean<IsChainTrustedForContextF<List<X509Certificate>, VerificationContext, TrustAnchor>>("is-chain-trusted-using-lotl")
+                bean<IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>>(
+                    "is-chain-trusted-using-lotl",
+                )
             val isChainTrustedUsingLoTE =
-                bean<IsChainTrustedForContextF<List<X509Certificate>, VerificationContext, TrustAnchor>>("is-chain-trusted-using-lote")
+                bean<IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>>(
+                    "is-chain-trusted-using-lote",
+                )
             val isChainTrustedUsingKeyStore =
-                bean<IsChainTrustedForContextF<List<X509Certificate>, VerificationContext, TrustAnchor>>("is-chain-trusted-using-keyStore")
+                bean<IsChainTrustedForContextF<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>>(
+                    "is-chain-trusted-using-keyStore",
+                )
 
-            isChainTrustedUsingLoTL or isChainTrustedUsingLoTE or isChainTrustedUsingKeyStore
+            IsChainTrusted(isChainTrustedUsingLoTL, isChainTrustedUsingLoTE, isChainTrustedUsingKeyStore)
         }
 
         registerBean<IsChainTrustedUseCase>()
