@@ -25,13 +25,13 @@ import eu.europa.ec.eudi.etsi119602.datamodel.Uri
 import eu.europa.ec.eudi.etsi1196x2.consultation.*
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.ValidationLevel
-import eu.europa.esig.dss.jades.validation.JWSCompactDocumentValidator
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
 import eu.europa.esig.dss.spi.x509.CertificateSource
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
+import eu.europa.esig.dss.validation.SignedDocumentValidator
 import io.ktor.client.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -107,7 +107,7 @@ private suspend fun verifyLoTEJwtSignature(
             }
 
         val validator =
-            JWSCompactDocumentValidator(InMemoryDocument(jwt.toByteArray())).apply {
+            SignedDocumentValidator.fromDocument(InMemoryDocument(jwt.toByteArray())).apply {
                 setCertificateVerifier(certificateVerifier)
                 setValidationLevel(ValidationLevel.BASIC_SIGNATURES)
                 setValidationContextExecutor(CompleteValidationContextExecutor.INSTANCE)
