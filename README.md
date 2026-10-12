@@ -133,6 +133,10 @@ Variable: `TRUST_VALIDATOR_LOTE_IN_MEMORY_CACHE_EXPIRATION`
 Description: Time that LoTE trust-anchor results are retained in the in-memory cache before they are reloaded, accepts duration syntax  
 Default value: `PT10M`  
 
+Variable: `TRUST_VALIDATOR_LOTE_VERIFY_SIGNATURE`  
+Description: Whether to verify the signature of the LoTE. When enabled, the LoTE JWT signature is verified against the KeyStore configured via the `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_*`. When disabled, the LoTE is accepted without signature verification.  
+Default value: `true`
+
 Variable: `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_LOCATION`  
 Description: Location of the Java KeyStore that contains X.509 certificates that can be used to verify the signature of the LoTE  
 

@@ -19,6 +19,7 @@ import arrow.core.NonEmptyList
 import arrow.core.toNonEmptyListOrNull
 import eu.europa.ec.eudi.etsi119602.consultation.ContinueOnProblem
 import eu.europa.ec.eudi.etsi119602.consultation.LoadLoTEAndPointers
+import eu.europa.ec.eudi.etsi119602.consultation.VerifyJwtSignature
 import eu.europa.ec.eudi.etsi1196x2.consultation.DisposableContainer
 import eu.europa.ec.eudi.etsi1196x2.consultation.IsChainTrustedForContextF
 import eu.europa.ec.eudi.etsi1196x2.consultation.VerificationContext
@@ -106,6 +107,17 @@ internal class TrustValidatorServiceContext :
         registerBean(name = "is-chain-trusted-using-lote", infrastructure = true, autowirable = false) {
             val config = bean<TrustValidatorConfigurationProperties>()
             config.trustSources?.let { trustSources ->
+                val verifyJwtSignature: VerifyJwtSignature =
+                    if (config.lote.verifySignature) {
+                        runBlocking {
+                            VerifyJwtSignatureUsingJAdESBB(
+                                requireNotNull(config.lote.signatureVerification),
+                                bean(),
+                            )
+                        }
+                    } else {
+                        VerifyJwtSignature { jwt -> VerifyJwtSignature.Outcome.Verified(jwt) }
+                    }
                 trustSources.isChainTrustedForContextUsingLoTE(
                     scope = bean(),
                     cacheDirectory = config.lote.fileCache.location,
@@ -125,7 +137,7 @@ internal class TrustValidatorServiceContext :
                             maxLists = 50,
                         ),
                     validateCertificateChainUsingPKIX = ValidateCertificateChainUsingPKIX(config.enableCertificateRevocationCheck),
-                    verifyJwtSignature = runBlocking { VerifyJwtSignatureUsingJAdESBB(config.lote.signatureVerification) },
+                    verifyJwtSignature = verifyJwtSignature,
                 )
             } ?: IsChainTrustedForContextF.empty()
         }

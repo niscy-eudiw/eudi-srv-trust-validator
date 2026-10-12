@@ -29,9 +29,13 @@ import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Date
+import kotlin.time.Clock
+import kotlin.time.toJavaInstant
 
 class VerifyJwtSignatureUsingJAdESBB private constructor(
     certificateSource: CertificateSource,
+    private val clock: Clock,
 ) : VerifyJwtSignature {
     private val certificateVerifier: CommonCertificateVerifier =
         CommonCertificateVerifier(true).apply {
@@ -47,6 +51,7 @@ class VerifyJwtSignatureUsingJAdESBB private constructor(
                         setCertificateVerifier(certificateVerifier)
                         setValidationLevel(ValidationLevel.BASIC_SIGNATURES)
                         setValidationContextExecutor(CompleteValidationContextExecutor.INSTANCE)
+                        setValidationTime(Date.from(clock.now().toJavaInstant()))
                     }
 
                 val report = validator.validateDocument().simpleReport
@@ -72,7 +77,10 @@ class VerifyJwtSignatureUsingJAdESBB private constructor(
         }
 
     companion object {
-        suspend operator fun invoke(keyStore: KeyStoreConfigurationProperties): VerifyJwtSignatureUsingJAdESBB =
+        suspend operator fun invoke(
+            keyStore: KeyStoreConfigurationProperties,
+            clock: Clock,
+        ): VerifyJwtSignatureUsingJAdESBB =
             withContext(Dispatchers.IO) {
                 val certificateSource: CertificateSource =
                     keyStore.location.inputStream.use {
@@ -82,7 +90,7 @@ class VerifyJwtSignatureUsingJAdESBB private constructor(
                             (keyStore.password?.value ?: "").toCharArray(),
                         )
                     }
-                VerifyJwtSignatureUsingJAdESBB(certificateSource)
+                VerifyJwtSignatureUsingJAdESBB(certificateSource, clock)
             }
     }
 }
