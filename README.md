@@ -133,6 +133,16 @@ Variable: `TRUST_VALIDATOR_LOTE_IN_MEMORY_CACHE_EXPIRATION`
 Description: Time that LoTE trust-anchor results are retained in the in-memory cache before they are reloaded, accepts duration syntax  
 Default value: `PT10M`  
 
+Variable: `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_LOCATION`  
+Description: Location of the Java KeyStore that contains X.509 certificates that can be used to verify the signature of the LoTE  
+
+Variable: `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_KEY_STORE_TYPE`  
+Description: Type of the Java KeyStore that contains X.509 certificates that can be used to verify the signature of the LoTE   
+Default value: `JKS`
+
+Variable: `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_PASSWORD`  
+Description: Password of the Java KeyStore that contains X.509 certificates that can be used to verify the signature of the LoTE  
+
 > [!IMPORTANT]
 > 
 > Each Trust Source can be configured to use Trust Anchors either:
@@ -141,9 +151,9 @@ Default value: `PT10M`
 > 2. from a LoTE
 > 3. from both a LoTL and a LoTE
 
-> [!CAUTION]
+> [!NOTE]
 > 
-> Signature verification for LoTEs is currently not implemented.
+> LoTE signature verification is performed using JAdES BB against the KeyStore configured via the `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_*` variables. This configuration is required; the service will not start if it is not provided.
 
 ### Trust Sources – Wallet Providers
 
