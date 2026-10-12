@@ -125,7 +125,7 @@ internal class TrustValidatorServiceContext :
                             maxLists = 50,
                         ),
                     validateCertificateChainUsingPKIX = ValidateCertificateChainUsingPKIX(config.enableCertificateRevocationCheck),
-                    verifyJwtSignature = VerifyJwtSignatureUsingJAdESBB(config.lote.signatureVerification),
+                    verifyJwtSignature = runBlocking { VerifyJwtSignatureUsingJAdESBB(config.lote.signatureVerification) },
                 )
             } ?: IsChainTrustedForContextF.empty()
         }

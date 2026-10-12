@@ -67,21 +67,22 @@ class VerifyJwtSignatureUsingJAdESBB private constructor(
             }
         }.getOrElse {
             VerifyJwtSignature.Outcome.NotVerified(
-                IllegalStateException("JAdES B-B signature could not be verified."),
+                IllegalStateException("JAdES B-B signature could not be verified: $it"),
             )
         }
 
     companion object {
-        operator fun invoke(keyStore: KeyStoreConfigurationProperties): VerifyJwtSignatureUsingJAdESBB {
-            val certificateSource: CertificateSource =
-                keyStore.location.inputStream.use {
-                    KeyStoreCertificateSource(
-                        it,
-                        keyStore.keyStoreType,
-                        (keyStore.password?.value ?: "").toCharArray(),
-                    )
-                }
-            return VerifyJwtSignatureUsingJAdESBB(certificateSource)
-        }
+        suspend operator fun invoke(keyStore: KeyStoreConfigurationProperties): VerifyJwtSignatureUsingJAdESBB =
+            withContext(Dispatchers.IO) {
+                val certificateSource: CertificateSource =
+                    keyStore.location.inputStream.use {
+                        KeyStoreCertificateSource(
+                            it,
+                            keyStore.keyStoreType,
+                            (keyStore.password?.value ?: "").toCharArray(),
+                        )
+                    }
+                VerifyJwtSignatureUsingJAdESBB(certificateSource)
+            }
     }
 }

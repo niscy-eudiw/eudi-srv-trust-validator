@@ -82,6 +82,14 @@ kotlin {
     }
 }
 
+tasks.bootJar {
+    exclude("lotl.jks", "lote.jks")
+}
+
+tasks.jar {
+    exclude("lotl.jks", "lote.jks")
+}
+
 tasks.test {
     useJUnitPlatform()
 }
