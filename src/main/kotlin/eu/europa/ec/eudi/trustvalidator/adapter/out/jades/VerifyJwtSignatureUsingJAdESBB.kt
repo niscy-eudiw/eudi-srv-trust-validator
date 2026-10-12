@@ -17,6 +17,7 @@ package eu.europa.ec.eudi.trustvalidator.adapter.out.jades
 
 import arrow.core.raise.result
 import eu.europa.ec.eudi.etsi119602.consultation.VerifyJwtSignature
+import eu.europa.ec.eudi.trustvalidator.config.KeyStoreConfigurationProperties
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.ValidationLevel
 import eu.europa.esig.dss.model.InMemoryDocument
@@ -24,17 +25,14 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
 import eu.europa.esig.dss.spi.x509.CertificateSource
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
+import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-fun interface VerifyJwtSignatureUsingJAdESBB {
-    suspend operator fun invoke(jwt: String): VerifyJwtSignature.Outcome
-}
-
-class IsJWTSignatureSignedUsingJAdESBB(
+class VerifyJwtSignatureUsingJAdESBB private constructor(
     certificateSource: CertificateSource,
-) : VerifyJwtSignatureUsingJAdESBB {
+) : VerifyJwtSignature {
     private val certificateVerifier: CommonCertificateVerifier =
         CommonCertificateVerifier(true).apply {
             val trustedCertificateSource = CommonTrustedCertificateSource().apply { importAsTrusted(certificateSource) }
@@ -61,7 +59,7 @@ class IsJWTSignatureSignedUsingJAdESBB(
                 } else {
                     VerifyJwtSignature.Outcome.NotVerified(
                         IllegalStateException(
-                            "LoTE JAdES B-B signature verification failed: indication=$indication, " +
+                            "JAdES B-B signature verification failed: indication=$indication, " +
                                 "subIndication=${report.getSubIndication(signatureId)}",
                         ),
                     )
@@ -69,7 +67,21 @@ class IsJWTSignatureSignedUsingJAdESBB(
             }
         }.getOrElse {
             VerifyJwtSignature.Outcome.NotVerified(
-                IllegalStateException("LoTE JAdES B-B signature could not be verified."),
+                IllegalStateException("JAdES B-B signature could not be verified."),
             )
         }
+
+    companion object {
+        operator fun invoke(keyStore: KeyStoreConfigurationProperties): VerifyJwtSignatureUsingJAdESBB {
+            val certificateSource: CertificateSource =
+                keyStore.location.inputStream.use {
+                    KeyStoreCertificateSource(
+                        it,
+                        keyStore.keyStoreType,
+                        (keyStore.password?.value ?: "").toCharArray(),
+                    )
+                }
+            return VerifyJwtSignatureUsingJAdESBB(certificateSource)
+        }
+    }
 }
