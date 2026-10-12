@@ -67,7 +67,7 @@ class VerifyJwtSignatureUsingJAdESBB private constructor(
             }
         }.getOrElse {
             VerifyJwtSignature.Outcome.NotVerified(
-                IllegalStateException("JAdES B-B signature could not be verified: $it"),
+                IllegalStateException("JAdES B-B signature could not be verified", it),
             )
         }
 
