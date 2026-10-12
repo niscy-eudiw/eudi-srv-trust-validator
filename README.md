@@ -151,10 +151,6 @@ Description: Password of the Java KeyStore that contains X.509 certificates that
 > 2. from a LoTE
 > 3. from both a LoTL and a LoTE
 
-> [!NOTE]
-> 
-> LoTE signature verification is performed using JAdES BB and the trust anchors must be included in the KeyStore configured via the `TRUST_VALIDATOR_LOTE_SIGNATURE_VERIFICATION_*` variables.  
-
 ### Trust Sources – Wallet Providers
 
 #### LoTL Configuration
