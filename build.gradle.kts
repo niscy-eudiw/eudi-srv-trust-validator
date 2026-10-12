@@ -42,7 +42,6 @@ dependencies {
     implementation(libs.dss.policy.jaxb)
     implementation(libs.dss.utils.google.guava)
     implementation(libs.consultation.lote)
-    implementation(libs.dss.lote.validation.json)
     implementation(libs.dss.jades)
     implementation(libs.dss.validation)
 

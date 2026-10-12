@@ -23,18 +23,7 @@ import eu.europa.ec.eudi.etsi119602.consultation.eu.walletProviderSigningCertifi
 import eu.europa.ec.eudi.etsi119602.consultation.eu.wrpAccessCertificateProfile
 import eu.europa.ec.eudi.etsi119602.datamodel.Uri
 import eu.europa.ec.eudi.etsi1196x2.consultation.*
-import eu.europa.esig.dss.enumerations.Indication
-import eu.europa.esig.dss.enumerations.ValidationLevel
-import eu.europa.esig.dss.model.InMemoryDocument
-import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
-import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
-import eu.europa.esig.dss.spi.x509.CertificateSource
-import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
-import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
-import eu.europa.esig.dss.validation.SignedDocumentValidator
 import io.ktor.client.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.security.cert.TrustAnchor
@@ -59,10 +48,9 @@ fun TrustSourcesConfigurationProperties.isChainTrustedForContextUsingLoTE(
     continueOnProblem: ContinueOnProblem = ContinueOnProblem.Never,
     constraints: LoadLoTEAndPointers.Constraints,
     validateCertificateChainUsingPKIX: ValidateCertificateChainUsingPKIX<List<X509Certificate>, TrustAnchor>,
-    signatureVerification: KeyStoreConfigurationProperties,
+    verifyJwtSignature: VerifyJwtSignature,
 ): ComposeChainTrust<NonEmptyList<X509Certificate>, VerificationContext, TrustAnchor>? =
     loteSources()?.let { (locations, services) ->
-        val verifyJwtSignature = loteSignatureVerifierOf(signatureVerification)
         log.info(locations)
 
         val provisionTrustAnchorsFromLOTE =
@@ -84,48 +72,6 @@ fun TrustSourcesConfigurationProperties.isChainTrustedForContextUsingLoTE(
             )
 
         provisionTrustAnchorsFromLOTE.cached(scope, locations, ttl = inMemoryCacheExpiration)
-    }
-
-private fun loteSignatureVerifierOf(signatureVerificationKeyStore: KeyStoreConfigurationProperties): VerifyJwtSignature =
-    signatureVerificationKeyStore.let { ks ->
-        val certificateSource: CertificateSource =
-            ks.location.inputStream.use {
-                KeyStoreCertificateSource(it, ks.keyStoreType, (ks.password?.value ?: "").toCharArray())
-            }
-        VerifyJwtSignature { jwt -> verifyLoTEJwtSignature(jwt, certificateSource) }
-    }
-
-private suspend fun verifyLoTEJwtSignature(
-    jwt: String,
-    certificateSource: CertificateSource,
-): VerifyJwtSignature.Outcome =
-    withContext(Dispatchers.IO) {
-        val trustedCertificateSource = CommonTrustedCertificateSource().apply { importAsTrusted(certificateSource) }
-        val certificateVerifier =
-            CommonCertificateVerifier(true).apply {
-                setTrustedCertSources(trustedCertificateSource)
-            }
-
-        val validator =
-            SignedDocumentValidator.fromDocument(InMemoryDocument(jwt.toByteArray())).apply {
-                setCertificateVerifier(certificateVerifier)
-                setValidationLevel(ValidationLevel.BASIC_SIGNATURES)
-                setValidationContextExecutor(CompleteValidationContextExecutor.INSTANCE)
-            }
-
-        val simpleReport = validator.validateDocument().simpleReport
-        val signatureId = simpleReport.firstSignatureId
-        val indication = simpleReport.getIndication(signatureId)
-        if (indication == Indication.TOTAL_PASSED) {
-            VerifyJwtSignature.Outcome.Verified(jwt)
-        } else {
-            VerifyJwtSignature.Outcome.NotVerified(
-                IllegalStateException(
-                    "LoTE JWS signature verification failed: indication=$indication, " +
-                        "subIndication=${simpleReport.getSubIndication(signatureId)}",
-                ),
-            )
-        }
     }
 
 private fun TrustSourcesConfigurationProperties.loteSources(): Pair<LoteLocations, LoteServices>? {
