@@ -111,7 +111,7 @@ internal class TrustValidatorServiceContext :
                     if (config.lote.verifySignature) {
                         runBlocking {
                             VerifyJwtSignatureUsingJAdESBB(
-                                requireNotNull(config.lote.signatureVerification),
+                                checkNotNull(config.lote.signatureVerification),
                                 bean(),
                             )
                         }
